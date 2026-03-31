@@ -1,0 +1,10 @@
+.env
+venv/
+__pycache__/
+*.pyc
+.DS_Store
+ic_engine_docs/
+chroma_ic_db/
+upload_db.py
+check_upload.py
+test_token.py

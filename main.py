@@ -1,0 +1,152 @@
+import os
+import shutil
+import tempfile
+from typing import List, Optional
+
+from fastapi import FastAPI, UploadFile, File, HTTPException, Header
+from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
+
+from models import AskRequest, AskResponse, SourceDoc, IngestResponse
+from rag_engine import rag
+from ingest import ingest_documents
+
+load_dotenv()
+
+app = FastAPI(
+    title="IC Engine RAG API",
+    description="AI study assistant for IC engine engineering students",
+    version="1.0.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.get("/")
+def root():
+    return {
+        "message": "IC Engine RAG API is running",
+        "docs": "Visit /docs for interactive API documentation",
+        "health": "Visit /health to check server status"
+    }
+
+@app.get("/health")
+def health():
+    return {
+        "status": "ok",
+        "docs_indexed": rag.get_doc_count(),
+        "message": "IC Engine RAG API is running"
+    }
+
+@app.post("/ask", response_model=AskResponse)
+def ask_question(body: AskRequest):
+
+    if not body.question.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Question cannot be empty"
+        )
+
+    if len(body.question.strip()) < 10:
+        raise HTTPException(
+            status_code=400,
+            detail="Question is too short — please ask a complete question"
+        )
+
+    if len(body.question.strip()) > 500:
+        raise HTTPException(
+            status_code=400,
+            detail="Question is too long — maximum 500 characters allowed"
+        )
+
+    try:
+        result = rag.ask(body.question, top_k=body.top_k)
+        sources = [SourceDoc(**s) for s in result["sources"]]
+        return AskResponse(
+            answer=result["answer"],
+            sources=sources
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Something went wrong: {str(e)}"
+        )
+
+@app.post("/ingest", response_model=IngestResponse)
+async def ingest_files(
+    files: List[UploadFile] = File(...),
+    admin_key: Optional[str] = Header(None)
+):
+    expected_key = os.getenv("ADMIN_KEY", "")
+    if not expected_key:
+        raise HTTPException(
+            status_code=500,
+            detail="ADMIN_KEY not set in .env file"
+        )
+    if admin_key != expected_key:
+        raise HTTPException(
+            status_code=403,
+            detail="Unauthorized — invalid or missing admin key"
+        )
+
+    if not files:
+        raise HTTPException(
+            status_code=400,
+            detail="No files uploaded"
+        )
+
+    for file in files:
+        if not file.filename.endswith(".pdf"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"{file.filename} is not a PDF — only PDF files allowed"
+            )
+
+    tmp_dir = tempfile.mkdtemp()
+    try:
+        for file in files:
+            dest = os.path.join(tmp_dir, file.filename)
+            with open(dest, "wb") as f:
+                shutil.copyfileobj(file.file, f)
+
+        chunks, file_count = ingest_documents(tmp_dir)
+
+        return IngestResponse(
+            message="Documents ingested successfully",
+            chunks_added=chunks,
+            files_processed=file_count
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ingestion failed: {str(e)}"
+        )
+    finally:
+        shutil.rmtree(tmp_dir)
+
+@app.get("/docs-list")
+def list_docs():
+    try:
+        collection = rag.vectorstore._collection
+        results = collection.get(include=["metadatas"])
+
+        sources = list({
+            os.path.basename(m.get("source", "unknown"))
+            for m in results["metadatas"]
+        })
+
+        return {
+            "indexed_files": sources,
+            "total_files": len(sources),
+            "total_chunks": rag.get_doc_count()
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not retrieve document list: {str(e)}"
+        )
+
