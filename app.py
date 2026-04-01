@@ -8,7 +8,8 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-API_URL = "http://localhost:8000"
+# API_URL = "http://localhost:8000"
+API_URL = "https://khizr72-ic-engine-rag.hf.space"
 
 st.markdown("""
 <style>
