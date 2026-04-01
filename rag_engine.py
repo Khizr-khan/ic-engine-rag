@@ -62,9 +62,17 @@ class RAGEngine:
             temperature=0
         )
         self.prompt = PromptTemplate.from_template(PROMPT_TEMPLATE)
-
     def enhance_question(self, question: str) -> str:
         question = question.strip()
+
+        # Short answer keywords — don't expand these
+        short_keywords = [
+            "only", "just", "formula", "definition only",
+            "give me formula", "only formula", "briefly"
+        ]
+        if any(kw in question.lower() for kw in short_keywords):
+            return question  # return as-is, don't add "Explain...in detail"
+
         question_words = [
             "what", "how", "why", "when", "where",
             "which", "explain", "describe", "define",
