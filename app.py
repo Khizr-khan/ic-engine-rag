@@ -8,7 +8,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# API_URL = "http://localhost:8000"
 API_URL = "https://khizr72-ic-engine-rag.hf.space"
 
 st.markdown("""
@@ -61,25 +60,6 @@ st.markdown("""
     padding: 14px 17px; color: #e8e6df;
     font-size: 14px; line-height: 1.7;
     box-shadow: 0 2px 12px rgba(0,0,0,0.3);
-}
-
-.src-header {
-    font-size: 9px; font-weight: 600; letter-spacing: 0.1em;
-    color: #6b7a6b; font-family: 'IBM Plex Mono', monospace;
-    margin: 8px 0 6px 0;
-}
-.src-card {
-    background: rgba(26,58,26,0.4);
-    border: 1px solid rgba(74,222,128,0.2);
-    border-radius: 8px; padding: 8px 12px; margin-bottom: 5px;
-}
-.src-label {
-    font-size: 11px; color: #4ade80;
-    font-family: 'IBM Plex Mono', monospace; font-weight: 600;
-}
-.src-excerpt {
-    font-size: 11px; color: #6b7a6b;
-    font-style: italic; line-height: 1.5; margin-top: 3px;
 }
 
 .empty-state { text-align: center; padding: 60px 20px 40px; }
@@ -183,9 +163,6 @@ hr { border-color: rgba(74,222,128,0.1) !important; margin: 16px 0 !important; }
     <circle cx="30" cy="-20" r="3" fill="#4ade80"/>
     <circle cx="30" cy="-160" r="3" fill="#4ade80"/>
     <circle cx="180" cy="-10" r="3" fill="#4ade80"/>
-    <text x="34" y="-16" fill="#4ade80" font-family="monospace" font-size="7" stroke="none">1</text>
-    <text x="34" y="-158" fill="#4ade80" font-family="monospace" font-size="7" stroke="none">2</text>
-    <text x="184" y="-6" fill="#4ade80" font-family="monospace" font-size="7" stroke="none">4</text>
   </g>
   <g transform="translate(980,160)" stroke="#4ade80" fill="none">
     <text x="-60" y="-30" fill="#4ade80" font-family="monospace" font-size="9" stroke="none">VALVE TIMING</text>
@@ -231,11 +208,23 @@ st.markdown("""
 def clean_text(text: str) -> str:
     return text.encode("ascii", errors="replace").decode("ascii").replace("?", " ")
 
-def call_api(question: str):
+def build_history():
+    """Build history list from current messages"""
+    history = []
+    for msg in st.session_state.messages:
+        role = "user" if msg["role"] == "user" else "assistant"
+        history.append({"role": role, "content": msg["text"]})
+    return history
+
+def call_api(question: str, history: list = []):
     try:
         res = requests.post(
             f"{API_URL}/ask",
-            json={"question": question, "top_k": 4},
+            json={
+                "question": question,
+                "top_k": 4,
+                "history": history
+            },
             timeout=30
         )
         if res.status_code == 200:
@@ -261,20 +250,6 @@ def render_message(msg):
           <div class="ai-bubble-inner">{msg["text"]}</div>
         </div>
         """, unsafe_allow_html=True)
-
-        # if msg.get("sources"):
-        #     st.markdown(
-        #         "<div class='src-header'>SOURCES</div>",
-        #         unsafe_allow_html=True
-        #     )
-        #     for src in msg["sources"]:
-        #         excerpt = clean_text(src.get("excerpt", ""))[:120]
-        #         st.markdown(f"""
-        #         <div class="src-card">
-        #           <div class="src-label">📄 {src['filename']} — pg.{src['page'] + 1}</div>
-        #           <div class="src-excerpt">"{excerpt}..."</div>
-        #         </div>
-        #         """, unsafe_allow_html=True)
 
 # ── Main chat area ────────────────────────────────────────────────────────────
 if len(st.session_state.messages) == 0:
@@ -321,9 +296,10 @@ else:
 if st.session_state.suggested:
     question = st.session_state.suggested
     st.session_state.suggested = None
+    history = build_history()
     st.session_state.messages.append({"role": "user", "text": question})
     with st.spinner("Searching course material..."):
-        data, err = call_api(question)
+        data, err = call_api(question, history=history)
     if err:
         st.markdown(f'<div class="error-box">⚠ {err}</div>', unsafe_allow_html=True)
         st.session_state.messages.pop()
@@ -370,9 +346,10 @@ if submitted and user_input.strip():
             unsafe_allow_html=True
         )
     else:
+        history = build_history()
         st.session_state.messages.append({"role": "user", "text": question})
         with st.spinner("Searching course material..."):
-            data, err = call_api(question)
+            data, err = call_api(question, history=history)
         if err:
             st.markdown(f'<div class="error-box">⚠ {err}</div>', unsafe_allow_html=True)
             st.session_state.messages.pop()

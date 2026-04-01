@@ -37,18 +37,18 @@ STRICT RULES:
 - If not in context → say: 'This topic is not covered in the course material.'
 - If not about IC engines → say: 'Please ask questions related to IC engines only.'
 - NEVER make up information
-
-- If the context contains garbled symbols like ��, □, or unreadable characters,
-  ignore them and write the formula yourself using proper mathematical notation.
+- If context contains garbled symbols like ��, ignore them and write formula using proper notation
 
 Context:
 {context}
 
+Previous Conversation:
+{history}
+
 Question:
 {question}
 
-Answer (follow the STRICT RULES above):"""
-
+Answer (follow STRICT RULES):"""
 
 
 class RAGEngine:
@@ -65,6 +65,7 @@ class RAGEngine:
             temperature=0
         )
         self.prompt = PromptTemplate.from_template(PROMPT_TEMPLATE)
+
     def enhance_question(self, question: str) -> str:
         question = question.strip()
 
@@ -74,7 +75,7 @@ class RAGEngine:
             "give me formula", "only formula", "briefly"
         ]
         if any(kw in question.lower() for kw in short_keywords):
-            return question  # return as-is, don't add "Explain...in detail"
+            return question
 
         question_words = [
             "what", "how", "why", "when", "where",
@@ -89,7 +90,7 @@ class RAGEngine:
             return f"Explain {question} in detail"
         return question
 
-    def ask(self, question: str, top_k: int = 6) -> dict:
+    def ask(self, question: str, top_k: int = 6, history: list = []) -> dict:
         question = self.enhance_question(question)
 
         retriever = self.vectorstore.as_retriever(
@@ -106,9 +107,18 @@ class RAGEngine:
             }
 
         context = "\n\n".join(d.page_content for d in docs)
+
+        # Build history string from last 4 messages
+        history_text = ""
+        if history:
+            for msg in history[-4:]:
+                role = "Student" if msg["role"] == "user" else "Professor"
+                history_text += f"{role}: {msg['content']}\n"
+
         prompt_value = self.prompt.format(
             context=context,
-            question=question
+            question=question,
+            history=history_text
         )
         answer = self.llm.invoke(prompt_value).content
 
@@ -128,10 +138,7 @@ class RAGEngine:
                     "excerpt": doc.page_content[:250]
                 })
 
-        return {
-            "answer": answer,
-            "sources": sources
-        }
+        return {"answer": answer, "sources": sources}
 
     def get_doc_count(self) -> int:
         return self.vectorstore._collection.count()
