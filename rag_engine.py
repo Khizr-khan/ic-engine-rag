@@ -26,7 +26,7 @@ def download_database():
 
 download_database()
 
-PPROMPT_TEMPLATE = """You are an expert IC Engine professor teaching engineering students.
+PROMPT_TEMPLATE = """You are an expert IC Engine professor teaching engineering students.
 Use the context below from course documents to give a DETAILED, thorough explanation.
 
 Your answer must include:
