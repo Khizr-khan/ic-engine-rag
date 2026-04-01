@@ -262,19 +262,19 @@ def render_message(msg):
         </div>
         """, unsafe_allow_html=True)
 
-        if msg.get("sources"):
-            st.markdown(
-                "<div class='src-header'>SOURCES</div>",
-                unsafe_allow_html=True
-            )
-            for src in msg["sources"]:
-                excerpt = clean_text(src.get("excerpt", ""))[:120]
-                st.markdown(f"""
-                <div class="src-card">
-                  <div class="src-label">📄 {src['filename']} — pg.{src['page'] + 1}</div>
-                  <div class="src-excerpt">"{excerpt}..."</div>
-                </div>
-                """, unsafe_allow_html=True)
+        # if msg.get("sources"):
+        #     st.markdown(
+        #         "<div class='src-header'>SOURCES</div>",
+        #         unsafe_allow_html=True
+        #     )
+        #     for src in msg["sources"]:
+        #         excerpt = clean_text(src.get("excerpt", ""))[:120]
+        #         st.markdown(f"""
+        #         <div class="src-card">
+        #           <div class="src-label">📄 {src['filename']} — pg.{src['page'] + 1}</div>
+        #           <div class="src-excerpt">"{excerpt}..."</div>
+        #         </div>
+        #         """, unsafe_allow_html=True)
 
 # ── Main chat area ────────────────────────────────────────────────────────────
 if len(st.session_state.messages) == 0:
