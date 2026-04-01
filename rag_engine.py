@@ -26,28 +26,17 @@ def download_database():
 
 download_database()
 
-PROMPT_TEMPLATE = """You are an expert IC Engine professor teaching engineering students.
-Use the context below from course documents to answer the student's question.
+PROMPT_TEMPLATE = """You are an IC Engine professor. Answer the question using ONLY the context below.
 
-IMPORTANT — Match your answer length to the question:
-- If the student asks for JUST a formula, definition, or quick fact — give a SHORT answer only
-- If the student asks to EXPLAIN, DESCRIBE, or ELABORATE — give a detailed answer
-- If the student asks for a DIAGRAM — draw ASCII art
-- Never give a long answer when a short one is requested
-
-For detailed explanations include:
-1. Clear definition
-2. Underlying principle
-3. Formula with explanation of terms
-4. Real world example
-5. Why it matters
-
-IMPORTANT: Do NOT mention slide times, refer slide time, page numbers,
-document names, or any source references in your answer.
-Write as a professor explaining directly to a student.
-Never make up information. Never answer from general knowledge.
-If the answer is not in the context, say: 'This topic is not covered in the course material.'
-If the question is not related to IC engines, say: 'Please ask questions related to IC engines only.'
+STRICT RULES:
+- If question contains "only", "just", "formula only", "definition only" → respond in 1-3 lines MAXIMUM. Nothing else.
+- If question asks to "explain", "describe", "elaborate", "detail" → give full explanation
+- If question asks for "diagram" → draw ASCII art
+- NEVER add definitions, examples, or extra info when student asks for something specific
+- NEVER mention slide times, page numbers, or document names
+- If not in context → say: 'This topic is not covered in the course material.'
+- If not about IC engines → say: 'Please ask questions related to IC engines only.'
+- NEVER make up information
 
 Context:
 {context}
@@ -55,7 +44,7 @@ Context:
 Question:
 {question}
 
-Answer:"""
+Answer (follow the STRICT RULES above):"""
 
 
 
@@ -69,7 +58,7 @@ class RAGEngine:
             embedding_function=self.embeddings
         )
         self.llm = ChatGroq(
-            model="llama-3.1-8b-instant",
+            model="llama-3.3-70b-versatile",
             temperature=0
         )
         self.prompt = PromptTemplate.from_template(PROMPT_TEMPLATE)
