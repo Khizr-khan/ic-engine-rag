@@ -38,6 +38,9 @@ STRICT RULES:
 - If not about IC engines → say: 'Please ask questions related to IC engines only.'
 - NEVER make up information
 
+- If the context contains garbled symbols like ��, □, or unreadable characters,
+  ignore them and write the formula yourself using proper mathematical notation.
+
 Context:
 {context}
 
