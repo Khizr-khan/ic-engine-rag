@@ -298,25 +298,23 @@ if st.session_state.suggested:
     st.session_state.suggested = None
     history = build_history()
     st.session_state.messages.append({"role": "user", "text": question})
-    
-    # Show streaming answer
-    with st.chat_message("assistant"):
+    res, err = call_api(question, history=history)
+    if err:
+        st.markdown(f'<div class="error-box">⚠ {err}</div>', unsafe_allow_html=True)
+        st.session_state.messages.pop()
+    else:
         placeholder = st.empty()
         full_answer = ""
-        res, err = call_api(question, history=history)
-        if err:
-            st.markdown(f'<div class="error-box">⚠ {err}</div>', unsafe_allow_html=True)
-            st.session_state.messages.pop()
-        else:
-            for chunk in res.iter_content(chunk_size=None, decode_unicode=True):
+        for chunk in res.iter_content(chunk_size=None, decode_unicode=True):
+            if chunk:
                 full_answer += chunk
                 placeholder.markdown(full_answer + "▌")
-            placeholder.markdown(full_answer)
-            st.session_state.messages.append({
-                "role": "ai",
-                "text": full_answer,
-                "sources": []
-            })
+        placeholder.markdown(full_answer)
+        st.session_state.messages.append({
+            "role": "ai",
+            "text": full_answer,
+            "sources": []
+        })
     st.rerun()
 
 # ── Input form ────────────────────────────────────────────────────────────────
@@ -350,22 +348,21 @@ if submitted and user_input.strip():
     else:
         history = build_history()
         st.session_state.messages.append({"role": "user", "text": question})
-        
-        with st.chat_message("assistant"):
+        res, err = call_api(question, history=history)
+        if err:
+            st.markdown(f'<div class="error-box">⚠ {err}</div>', unsafe_allow_html=True)
+            st.session_state.messages.pop()
+        else:
             placeholder = st.empty()
             full_answer = ""
-            res, err = call_api(question, history=history)
-            if err:
-                st.markdown(f'<div class="error-box">⚠ {err}</div>', unsafe_allow_html=True)
-                st.session_state.messages.pop()
-            else:
-                for chunk in res.iter_content(chunk_size=None, decode_unicode=True):
+            for chunk in res.iter_content(chunk_size=None, decode_unicode=True):
+                if chunk:
                     full_answer += chunk
                     placeholder.markdown(full_answer + "▌")
-                placeholder.markdown(full_answer)
-                st.session_state.messages.append({
-                    "role": "ai",
-                    "text": full_answer,
-                    "sources": []
-                })
+            placeholder.markdown(full_answer)
+            st.session_state.messages.append({
+                "role": "ai",
+                "text": full_answer,
+                "sources": []
+            })
         st.rerun()
