@@ -219,21 +219,22 @@ def build_history():
 def call_api(question: str, history: list = []):
     try:
         res = requests.post(
-            f"{API_URL}/ask",
+            f"{API_URL}/ask-stream",
             json={
                 "question": question,
-                "top_k": 4,
+                "top_k": 10,
                 "history": history
             },
+            stream=True,
             timeout=120
         )
         if res.status_code == 200:
-            return res.json(), None
+            return res, None
         return None, res.json().get("detail", "Unknown error")
     except requests.exceptions.ConnectionError:
-        return None, "Cannot reach the server. Make sure FastAPI is running on port 8000."
+        return None, "Cannot reach the server."
     except requests.exceptions.Timeout:
-        return None, "Request timed out. The server might be busy."
+        return None, "Request timed out."
     except Exception as e:
         return None, str(e)
 
@@ -351,7 +352,7 @@ if submitted and user_input.strip():
         res, err = call_api(question, history=history)
         if err:
             st.markdown(f'<div class="error-box">⚠ {err}</div>', unsafe_allow_html=True)
-            st.session_state.messages.pop()
+            st.session_state.messaFges.pop()
         else:
             placeholder = st.empty()
             full_answer = ""
