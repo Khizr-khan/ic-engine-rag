@@ -9,22 +9,21 @@ from dotenv import load_dotenv
 load_dotenv()
 
 CHROMA_DIR = "./chroma_ic_db"
-HF_REPO_ID = "khizr72/ic-engine-chromadb"
+HF_REPO_ID = "Khizr72/ic-engine-chromadb"
 
 def download_database():
-    import shutil
-    if os.path.exists(CHROMA_DIR):
-        shutil.rmtree(CHROMA_DIR)
-        print("Deleted old database cache...")
-    print("Downloading fresh database from Hugging Face...")
-    snapshot_download(
-        repo_id=HF_REPO_ID,
-        repo_type="dataset",
-        local_dir=CHROMA_DIR,
-        token=os.getenv("HF_TOKEN")
-    )
-    print("Database downloaded successfully!")
-    
+    if not os.path.exists(CHROMA_DIR) or not os.listdir(CHROMA_DIR):
+        print("Database not found locally — downloading from Hugging Face...")
+        snapshot_download(
+            repo_id=HF_REPO_ID,
+            repo_type="dataset",
+            local_dir=CHROMA_DIR,
+            token=os.getenv("HF_TOKEN")
+        )
+        print("Database downloaded successfully!")
+    else:
+        print("Database found locally — skipping download")
+
 download_database()
 
 PROMPT_TEMPLATE = """You are an IC Engine professor. Answer the question using ONLY the context below.
