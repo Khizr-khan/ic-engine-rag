@@ -71,12 +71,11 @@ class RAGEngine:
 
         short_keywords = ["only", "just", "briefly"]
         formula_keywords = ["formula", "equation", "expression"]
-        
-        # If asking for formula/equation without specifying topic
-        # — get topic from history
+        explain_keywords = ["explain", "elaborate", "more detail", "tell me more", "in detail"]
+
+        # If asking for formula without specifying topic — get topic from history
         if any(kw in question.lower() for kw in formula_keywords):
             if history:
-                # Get last user question to find the topic
                 last_user_msg = ""
                 for msg in reversed(history):
                     if msg["role"] == "user":
@@ -86,9 +85,28 @@ class RAGEngine:
                     return f"formula for {last_user_msg}"
             return question
 
+        # If asking to explain without specifying topic — get topic from history
+        if any(kw in question.lower() for kw in explain_keywords):
+            has_topic = any(
+                question.lower().startswith(w) for w in [
+                    "explain", "describe", "elaborate"
+                ]
+            ) and len(question.split()) > 3
+            if not has_topic and history:
+                last_user_msg = ""
+                for msg in reversed(history):
+                    if msg["role"] == "user":
+                        last_user_msg = msg["content"]
+                        break
+                if last_user_msg:
+                    return f"Explain {last_user_msg} in detail"
+            return question
+
+        # Short answer — return as is
         if any(kw in question.lower() for kw in short_keywords):
             return question
 
+        # Check if proper question
         question_words = [
             "what", "how", "why", "when", "where",
             "which", "explain", "describe", "define",
@@ -151,6 +169,75 @@ class RAGEngine:
                 })
 
         return {"answer": answer, "sources": sources}
+    
+    def generate_quiz(self, topic: str, num_questions: int = 10) -> list:
+        """Generate quiz questions from course material"""
+    
+    # Retrieve relevant chunks for the topic
+        docs = self.vectorstore.similarity_search(topic, k=20)
+        context = "\n\n".join(d.page_content for d in docs)
+    
+        quiz_prompt = f"""You are an IC Engine professor creating a quiz.
+        Based on the context below, generate exactly {num_questions} multiple choice questions about {topic}.
+
+    Format each question EXACTLY like this:
+    Q1: [question text]
+    A) [option]
+    B) [option]
+    C) [option]
+    D) [option]
+    Answer: [correct letter]
+    Explanation: [brief explanation from context]
+
+    ---
+
+    Context:
+    {context}
+
+    Generate {num_questions} questions now:"""
+
+        response = self.llm.invoke(quiz_prompt).content
+        return self.parse_quiz(response)
+
+    def parse_quiz(self, raw: str) -> list:
+        """Parse raw quiz text into structured questions"""
+        questions = []
+        blocks = raw.strip().split("---")
+        for block in blocks:
+            if "Q" in block and "Answer:" in block:
+                lines = block.strip().split("\n")
+                q = {"question": "", "options": {}, "answer": "", "explanation": ""}
+                for line in lines:
+                    line = line.strip()
+                    if line.startswith("Q") and ":" in line:
+                        q["question"] = line.split(":", 1)[1].strip()
+                    elif line.startswith("A)"):
+                        q["options"]["A"] = line[2:].strip()
+                    elif line.startswith("B)"):
+                        q["options"]["B"] = line[2:].strip()
+                    elif line.startswith("C)"):
+                        q["options"]["C"] = line[2:].strip()
+                    elif line.startswith("D)"):
+                        q["options"]["D"] = line[2:].strip()
+                    elif line.startswith("Answer:"):
+                        q["answer"] = line.split(":", 1)[1].strip()
+                    elif line.startswith("Explanation:"):
+                        q["explanation"] = line.split(":", 1)[1].strip()
+                if q["question"] and q["options"]:
+                    questions.append(q)
+        return questions
+
+    def check_answer(self, question: dict, student_answer: str) -> dict:
+        """Check if student answer is correct"""
+        correct = question["answer"].upper().strip()
+        given = student_answer.upper().strip()
+        is_correct = given == correct
+        return {
+            "correct": is_correct,
+            "given": given,
+            "correct_answer": correct,
+            "explanation": question["explanation"]
+        }
 
     def get_doc_count(self) -> int:
         return self.vectorstore._collection.count()

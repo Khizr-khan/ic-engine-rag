@@ -1,5 +1,6 @@
 import streamlit as st
 import requests
+import re
 
 st.set_page_config(
     page_title="IC Engine Assistant",
@@ -73,6 +74,28 @@ st.markdown("""
     border-radius: 10px; padding: 10px 14px;
     font-size: 13px; color: #f87171;
     font-family: 'IBM Plex Mono', monospace; margin: 8px 0;
+}
+
+.quiz-box {
+    background: rgba(16,22,16,0.92);
+    border: 1px solid rgba(74,222,128,0.3);
+    border-radius: 12px; padding: 16px;
+    margin: 8px 0;
+}
+.quiz-correct {
+    color: #4ade80; padding: 10px;
+    background: rgba(26,58,26,0.8);
+    border-radius: 8px; margin: 8px 0;
+}
+.quiz-wrong {
+    color: #f87171; padding: 10px;
+    background: rgba(40,10,10,0.8);
+    border-radius: 8px; margin: 8px 0;
+}
+.quiz-explanation {
+    color: #6b7a6b; font-size: 12px; padding: 8px;
+    background: rgba(16,22,16,0.8);
+    border-radius: 8px; margin: 4px 0;
 }
 
 .stTextInput > div > div > input {
@@ -192,6 +215,18 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 if "suggested" not in st.session_state:
     st.session_state.suggested = None
+if "quiz_mode" not in st.session_state:
+    st.session_state.quiz_mode = False
+if "quiz_questions" not in st.session_state:
+    st.session_state.quiz_questions = []
+if "quiz_index" not in st.session_state:
+    st.session_state.quiz_index = 0
+if "quiz_score" not in st.session_state:
+    st.session_state.quiz_score = 0
+if "quiz_answered" not in st.session_state:
+    st.session_state.quiz_answered = False
+if "last_result" not in st.session_state:
+    st.session_state.last_result = None
 
 # ── Header ────────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -205,11 +240,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-def clean_text(text: str) -> str:
-    return text.encode("ascii", errors="replace").decode("ascii").replace("?", " ")
-
 def build_history():
-    """Build history list from current messages"""
     history = []
     for msg in st.session_state.messages:
         role = "user" if msg["role"] == "user" else "assistant"
@@ -220,11 +251,7 @@ def call_api(question: str, history: list = []):
     try:
         res = requests.post(
             f"{API_URL}/ask-stream",
-            json={
-                "question": question,
-                "top_k": 10,
-                "history": history
-            },
+            json={"question": question, "top_k": 10, "history": history},
             stream=True,
             timeout=120
         )
@@ -237,6 +264,40 @@ def call_api(question: str, history: list = []):
         return None, "Request timed out."
     except Exception as e:
         return None, str(e)
+
+def call_quiz_api(topic: str, num_questions: int):
+    try:
+        res = requests.post(
+            f"{API_URL}/generate-quiz",
+            json={"topic": topic, "num_questions": num_questions},
+            timeout=120
+        )
+        if res.status_code == 200:
+            return res.json(), None
+        return None, res.json().get("detail", "Unknown error")
+    except Exception as e:
+        return None, str(e)
+
+def is_quiz_request(question: str):
+    patterns = [
+        r"ask me (\d+) questions? (?:on|about) (.+)",
+        r"quiz me (?:on|about) (.+)",
+        r"test me (?:on|about) (.+)",
+        r"(\d+) questions? (?:on|about) (.+)",
+        r"generate (\d+) questions? (?:on|about) (.+)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, question.lower())
+        if match:
+            groups = match.groups()
+            if len(groups) == 2:
+                try:
+                    return True, int(groups[0]), groups[1].strip()
+                except:
+                    return True, 5, groups[1].strip()
+            else:
+                return True, 5, groups[0].strip()
+    return False, 0, ""
 
 def render_message(msg):
     if msg["role"] == "user":
@@ -252,15 +313,88 @@ def render_message(msg):
         </div>
         """, unsafe_allow_html=True)
 
+def render_quiz():
+    if not st.session_state.quiz_questions:
+        return
+    total = len(st.session_state.quiz_questions)
+    idx = st.session_state.quiz_index
+
+    if idx >= total:
+        score = st.session_state.quiz_score
+        pct = int(score / total * 100)
+        emoji = "🌟" if pct >= 80 else "📚" if pct >= 50 else "💪"
+        msg = "Excellent!" if pct >= 80 else "Good effort! Keep studying" if pct >= 50 else "Need more practice!"
+        st.markdown(f"""
+        <div class="quiz-box">
+        <b>Quiz Complete! 🎉</b><br><br>
+        Your Score: {score}/{total} ({pct}%)<br><br>
+        {emoji} {msg}
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("Start New Quiz"):
+            st.session_state.quiz_mode = False
+            st.session_state.quiz_questions = []
+            st.session_state.quiz_index = 0
+            st.session_state.quiz_score = 0
+            st.session_state.quiz_answered = False
+            st.rerun()
+        return
+
+    q = st.session_state.quiz_questions[idx]
+    st.markdown(f"""
+    <div class="quiz-box">
+    <b>Question {idx+1} of {total}</b><br><br>
+    {q['question']}
+    </div>
+    """, unsafe_allow_html=True)
+
+    if not st.session_state.quiz_answered:
+        cols = st.columns(2)
+        options = q.get("options", {})
+        for i, (letter, option) in enumerate(options.items()):
+            with cols[i % 2]:
+                if st.button(f"{letter}) {option}", key=f"opt_{idx}_{letter}"):
+                    correct = q["answer"].upper().strip()
+                    given = letter.upper()
+                    is_correct = given == correct
+                    if is_correct:
+                        st.session_state.quiz_score += 1
+                    st.session_state.last_result = {
+                        "correct": is_correct,
+                        "given": given,
+                        "correct_answer": correct,
+                        "explanation": q.get("explanation", "")
+                    }
+                    st.session_state.quiz_answered = True
+                    st.rerun()
+    else:
+        result = st.session_state.last_result
+        if result["correct"]:
+            st.markdown('<div class="quiz-correct">✅ Correct!</div>', unsafe_allow_html=True)
+        else:
+            st.markdown(
+                f'<div class="quiz-wrong">❌ Wrong! Correct answer: {result["correct_answer"]}</div>',
+                unsafe_allow_html=True
+            )
+        if result["explanation"]:
+            st.markdown(
+                f'<div class="quiz-explanation">💡 {result["explanation"]}</div>',
+                unsafe_allow_html=True
+            )
+        if st.button("Next Question ➤"):
+            st.session_state.quiz_index += 1
+            st.session_state.quiz_answered = False
+            st.rerun()
+
 # ── Main chat area ────────────────────────────────────────────────────────────
-if len(st.session_state.messages) == 0:
+if len(st.session_state.messages) == 0 and not st.session_state.quiz_mode:
     st.markdown("""
     <div class="empty-state">
       <span class="empty-icon">⚙️</span>
       <div class="empty-title">Ask anything about IC Engines</div>
       <div class="empty-subtitle">
-        Answers sourced directly from your course documents
-        with exact page citations
+        Answers sourced directly from your course documents.
+        You can also say "ask me 5 questions on SI engine" to start a quiz!
       </div>
     </div>
     <div class="sugg-title">SUGGESTED QUESTIONS</div>
@@ -272,7 +406,7 @@ if len(st.session_state.messages) == 0:
         "How does turbocharging work?",
         "Difference between SI and CI engines",
         "What is volumetric efficiency?",
-        "Explain knocking in petrol engines",
+        "Ask me 5 questions on SI engine",
     ]
 
     cols = st.columns(2)
@@ -287,36 +421,66 @@ else:
     for msg in st.session_state.messages:
         render_message(msg)
 
+    if st.session_state.quiz_mode:
+        render_quiz()
+
     _, _, col3 = st.columns([4, 1, 1])
     with col3:
         if st.button("🗑 Clear", use_container_width=True):
             st.session_state.messages = []
+            st.session_state.quiz_mode = False
+            st.session_state.quiz_questions = []
+            st.session_state.quiz_index = 0
+            st.session_state.quiz_score = 0
+            st.session_state.quiz_answered = False
             st.rerun()
 
 # ── Handle suggested click ────────────────────────────────────────────────────
 if st.session_state.suggested:
     question = st.session_state.suggested
     st.session_state.suggested = None
-    history = build_history()
-    st.session_state.messages.append({"role": "user", "text": question})
-    res, err = call_api(question, history=history)
-    if err:
-        st.markdown(f'<div class="error-box">⚠ {err}</div>', unsafe_allow_html=True)
-        st.session_state.messages.pop()
+
+    is_quiz, num_q, topic = is_quiz_request(question)
+    if is_quiz:
+        st.session_state.messages.append({"role": "user", "text": question})
+        with st.spinner(f"Generating {num_q} questions on {topic}..."):
+            data, err = call_quiz_api(topic, num_q)
+        if err:
+            st.markdown(f'<div class="error-box">⚠ {err}</div>', unsafe_allow_html=True)
+            st.session_state.messages.pop()
+        else:
+            st.session_state.quiz_questions = data["questions"]
+            st.session_state.quiz_index = 0
+            st.session_state.quiz_score = 0
+            st.session_state.quiz_answered = False
+            st.session_state.quiz_mode = True
+            st.session_state.messages.append({
+                "role": "ai",
+                "text": f"Starting quiz on '{topic}'! {len(data['questions'])} questions ready. Good luck! 🎯",
+                "sources": []
+            })
+        st.rerun()
     else:
-        placeholder = st.empty()
-        full_answer = ""
-        for chunk in res.iter_content(chunk_size=None, decode_unicode=True):
-            if chunk:
-                full_answer += chunk
-                placeholder.markdown(full_answer + "▌")
-        placeholder.markdown(full_answer)
-        st.session_state.messages.append({
-            "role": "ai",
-            "text": full_answer,
-            "sources": []
-        })
-    st.rerun()
+        history = build_history()
+        st.session_state.messages.append({"role": "user", "text": question})
+        res, err = call_api(question, history=history)
+        if err:
+            st.markdown(f'<div class="error-box">⚠ {err}</div>', unsafe_allow_html=True)
+            st.session_state.messages.pop()
+        else:
+            placeholder = st.empty()
+            full_answer = ""
+            for chunk in res.iter_content(chunk_size=None, decode_unicode=True):
+                if chunk:
+                    full_answer += chunk
+                    placeholder.markdown(full_answer + "▌")
+            placeholder.markdown(full_answer)
+            st.session_state.messages.append({
+                "role": "ai",
+                "text": full_answer,
+                "sources": []
+            })
+        st.rerun()
 
 # ── Input form ────────────────────────────────────────────────────────────────
 st.markdown("<hr>", unsafe_allow_html=True)
@@ -326,7 +490,7 @@ with st.form("chat_form", clear_on_submit=True):
     with col1:
         user_input = st.text_input(
             label="question",
-            placeholder="Ask about combustion, cycles, components...",
+            placeholder="Ask a question or say 'ask me 5 questions on SI engine'...",
             label_visibility="collapsed"
         )
     with col2:
@@ -342,28 +506,50 @@ PRESS ENTER TO SEND
 # ── Process question ──────────────────────────────────────────────────────────
 if submitted and user_input.strip():
     question = user_input.strip()
-    if len(question) < 10:
+    if len(question) < 5:
         st.markdown('<div class="error-box">⚠ Question is too short</div>', unsafe_allow_html=True)
     elif len(question) > 500:
-        st.markdown('<div class="error-box">⚠ Question is too long</div>', unsafe_allow_html=True)
+        st.markdown('<div class="error-box">⚠ Question is too long — maximum 500 characters</div>', unsafe_allow_html=True)
     else:
-        history = build_history()
-        st.session_state.messages.append({"role": "user", "text": question})
-        res, err = call_api(question, history=history)
-        if err:
-            st.markdown(f'<div class="error-box">⚠ {err}</div>', unsafe_allow_html=True)
-            st.session_state.messaFges.pop()
+        is_quiz, num_q, topic = is_quiz_request(question)
+
+        if is_quiz:
+            st.session_state.messages.append({"role": "user", "text": question})
+            with st.spinner(f"Generating {num_q} questions on {topic}..."):
+                data, err = call_quiz_api(topic, num_q)
+            if err:
+                st.markdown(f'<div class="error-box">⚠ {err}</div>', unsafe_allow_html=True)
+                st.session_state.messages.pop()
+            else:
+                st.session_state.quiz_questions = data["questions"]
+                st.session_state.quiz_index = 0
+                st.session_state.quiz_score = 0
+                st.session_state.quiz_answered = False
+                st.session_state.quiz_mode = True
+                st.session_state.messages.append({
+                    "role": "ai",
+                    "text": f"Starting quiz on '{topic}'! {len(data['questions'])} questions ready. Good luck! 🎯",
+                    "sources": []
+                })
+            st.rerun()
         else:
-            placeholder = st.empty()
-            full_answer = ""
-            for chunk in res.iter_content(chunk_size=None, decode_unicode=True):
-                if chunk:
-                    full_answer += chunk
-                    placeholder.markdown(full_answer + "▌")
-            placeholder.markdown(full_answer)
-            st.session_state.messages.append({
-                "role": "ai",
-                "text": full_answer,
-                "sources": []
-            })
-        st.rerun()
+            history = build_history()
+            st.session_state.messages.append({"role": "user", "text": question})
+            res, err = call_api(question, history=history)
+            if err:
+                st.markdown(f'<div class="error-box">⚠ {err}</div>', unsafe_allow_html=True)
+                st.session_state.messages.pop()
+            else:
+                placeholder = st.empty()
+                full_answer = ""
+                for chunk in res.iter_content(chunk_size=None, decode_unicode=True):
+                    if chunk:
+                        full_answer += chunk
+                        placeholder.markdown(full_answer + "▌")
+                placeholder.markdown(full_answer)
+                st.session_state.messages.append({
+                    "role": "ai",
+                    "text": full_answer,
+                    "sources": []
+                })
+            st.rerun()

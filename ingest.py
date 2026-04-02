@@ -22,17 +22,10 @@ INDEX_KEYWORDS = [
 ]
 
 def is_noise_page(text: str, page_num: int) -> bool:
-    """
-    Returns True if this page should be SKIPPED.
-    A page is noise if:
-    1. It is too short (less than 200 characters)
-    2. It contains index/TOC keywords
-    3. It is mostly numbers and short lines (like a page index)
-    """
     text = text.strip()
 
-    # Skip very short pages — likely blank or header-only
-    if len(text) < 200:
+    # Skip very short pages
+    if len(text) < 100:  # reduced from 200
         return True
 
     # Skip pages containing index keywords
@@ -40,12 +33,12 @@ def is_noise_page(text: str, page_num: int) -> bool:
         if keyword in text:
             return True
 
-    # Skip pages where more than 40% of lines are very short
-    # Index pages have lots of short lines like "4  Otto cycle  55"
+    # Skip pages where more than 70% of lines are very short
+    # Changed from 40% to 70% — Ganesan has many equation lines
     lines = [l.strip() for l in text.split("\n") if l.strip()]
     if lines:
         short_lines = [l for l in lines if len(l) < 60]
-        if len(short_lines) / len(lines) > 0.4:
+        if len(short_lines) / len(lines) > 0.85:  # changed from 0.4 to 0.7
             return True
 
     return False

@@ -58,6 +58,21 @@ def ask_question(body: AskRequest):
         return AskResponse(answer=result["answer"], sources=sources)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Something went wrong: {str(e)}")
+    
+
+@app.post("/generate-quiz")
+def generate_quiz(body: dict):
+    topic = body.get("topic", "")
+    num_questions = body.get("num_questions", 5)
+    
+    if not topic:
+        raise HTTPException(status_code=400, detail="Topic cannot be empty")
+    
+    try:
+        questions = rag.generate_quiz(topic, num_questions)
+        return {"questions": questions}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Quiz generation failed: {str(e)}")
 
 @app.post("/ingest", response_model=IngestResponse)
 async def ingest_files(
