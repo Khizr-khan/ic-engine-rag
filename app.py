@@ -247,6 +247,15 @@ def build_history():
         history.append({"role": role, "content": msg["text"]})
     return history
 
+def format_subscripts(text: str) -> str:
+    text = re.sub(r'V_([A-Za-z0-9]+)', r'V<sub>\1</sub>', text)
+    text = re.sub(r'T_([A-Za-z0-9]+)', r'T<sub>\1</sub>', text)
+    text = re.sub(r'P_([A-Za-z0-9]+)', r'P<sub>\1</sub>', text)
+    text = re.sub(r'η_([A-Za-z0-9]+)', r'η<sub>\1</sub>', text)
+    text = re.sub(r'W_([A-Za-z0-9]+)', r'W<sub>\1</sub>', text)
+    text = re.sub(r'Q_([A-Za-z0-9]+)', r'Q<sub>\1</sub>', text)
+    return text
+
 def call_api(question: str, history: list = []):
     try:
         res = requests.post(
@@ -285,6 +294,9 @@ def is_quiz_request(question: str):
         r"test me (?:on|about) (.+)",
         r"(\d+) questions? (?:on|about) (.+)",
         r"generate (\d+) questions? (?:on|about) (.+)",
+        r"take my quiz (?:on|about) (.+)",
+        r"give me a quiz (?:on|about) (.+)",
+        r"quiz on (.+)",
     ]
     for pattern in patterns:
         match = re.search(pattern, question.lower())
@@ -307,9 +319,10 @@ def render_message(msg):
         </div>
         """, unsafe_allow_html=True)
     else:
+        formatted_text = format_subscripts(msg["text"])
         st.markdown(f"""
         <div class="ai-bubble">
-          <div class="ai-bubble-inner">{msg["text"]}</div>
+          <div class="ai-bubble-inner">{formatted_text}</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -469,12 +482,14 @@ if st.session_state.suggested:
             st.session_state.messages.pop()
         else:
             placeholder = st.empty()
-            full_answer = ""
+            full_answer = ""            
             for chunk in res.iter_content(chunk_size=None, decode_unicode=True):
                 if chunk:
                     full_answer += chunk
-                    placeholder.markdown(full_answer + "▌")
-            placeholder.markdown(full_answer)
+                    placeholder.markdown(format_subscripts(full_answer) + "▌", unsafe_allow_html=True)
+            placeholder.markdown(format_subscripts(full_answer), unsafe_allow_html=True)
+
+            
             st.session_state.messages.append({
                 "role": "ai",
                 "text": full_answer,
@@ -545,11 +560,12 @@ if submitted and user_input.strip():
                 for chunk in res.iter_content(chunk_size=None, decode_unicode=True):
                     if chunk:
                         full_answer += chunk
-                        placeholder.markdown(full_answer + "▌")
-                placeholder.markdown(full_answer)
+                        placeholder.markdown(format_subscripts(full_answer) + "▌", unsafe_allow_html=True)
+                placeholder.markdown(format_subscripts(full_answer), unsafe_allow_html=True)
                 st.session_state.messages.append({
                     "role": "ai",
                     "text": full_answer,
                     "sources": []
                 })
             st.rerun()
+
