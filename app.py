@@ -225,7 +225,7 @@ def call_api(question: str, history: list = []):
                 "top_k": 4,
                 "history": history
             },
-            timeout=30
+            timeout=120
         )
         if res.status_code == 200:
             return res.json(), None
@@ -298,7 +298,7 @@ if st.session_state.suggested:
     st.session_state.suggested = None
     history = build_history()
     st.session_state.messages.append({"role": "user", "text": question})
-    with st.spinner("Searching course material..."):
+    with st.spinner("Searching course material... (first request may take up to 60 seconds)"):
         data, err = call_api(question, history=history)
     if err:
         st.markdown(f'<div class="error-box">⚠ {err}</div>', unsafe_allow_html=True)
@@ -348,7 +348,7 @@ if submitted and user_input.strip():
     else:
         history = build_history()
         st.session_state.messages.append({"role": "user", "text": question})
-        with st.spinner("Searching course material..."):
+        with st.spinner("Searching course material... (first request may take up to 60 seconds)"):
             data, err = call_api(question, history=history)
         if err:
             st.markdown(f'<div class="error-box">⚠ {err}</div>', unsafe_allow_html=True)
