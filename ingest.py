@@ -101,7 +101,7 @@ def ingest_documents(docs_dir: str = "./ic_engine_docs"):
         persist_directory="./chroma_ic_db"
     )
 
-    vectorstore.persist()
+    # vectorstore.persist()
     print("Done! Vector DB saved to ./chroma_ic_db")
 
     return len(chunks), len(set(d.metadata["source"] for d in documents))
