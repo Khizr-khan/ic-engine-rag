@@ -298,17 +298,25 @@ if st.session_state.suggested:
     st.session_state.suggested = None
     history = build_history()
     st.session_state.messages.append({"role": "user", "text": question})
-    with st.spinner("Searching course material... (first request may take up to 60 seconds)"):
-        data, err = call_api(question, history=history)
-    if err:
-        st.markdown(f'<div class="error-box">⚠ {err}</div>', unsafe_allow_html=True)
-        st.session_state.messages.pop()
-    else:
-        st.session_state.messages.append({
-            "role": "ai",
-            "text": data["answer"],
-            "sources": data.get("sources", [])
-        })
+    
+    # Show streaming answer
+    with st.chat_message("assistant"):
+        placeholder = st.empty()
+        full_answer = ""
+        res, err = call_api(question, history=history)
+        if err:
+            st.markdown(f'<div class="error-box">⚠ {err}</div>', unsafe_allow_html=True)
+            st.session_state.messages.pop()
+        else:
+            for chunk in res.iter_content(chunk_size=None, decode_unicode=True):
+                full_answer += chunk
+                placeholder.markdown(full_answer + "▌")
+            placeholder.markdown(full_answer)
+            st.session_state.messages.append({
+                "role": "ai",
+                "text": full_answer,
+                "sources": []
+            })
     st.rerun()
 
 # ── Input form ────────────────────────────────────────────────────────────────
@@ -336,27 +344,28 @@ PRESS ENTER TO SEND
 if submitted and user_input.strip():
     question = user_input.strip()
     if len(question) < 10:
-        st.markdown(
-            '<div class="error-box">⚠ Question is too short — please ask a complete question</div>',
-            unsafe_allow_html=True
-        )
+        st.markdown('<div class="error-box">⚠ Question is too short</div>', unsafe_allow_html=True)
     elif len(question) > 500:
-        st.markdown(
-            '<div class="error-box">⚠ Question is too long — maximum 500 characters</div>',
-            unsafe_allow_html=True
-        )
+        st.markdown('<div class="error-box">⚠ Question is too long</div>', unsafe_allow_html=True)
     else:
         history = build_history()
         st.session_state.messages.append({"role": "user", "text": question})
-        with st.spinner("Searching course material... (first request may take up to 60 seconds)"):
-            data, err = call_api(question, history=history)
-        if err:
-            st.markdown(f'<div class="error-box">⚠ {err}</div>', unsafe_allow_html=True)
-            st.session_state.messages.pop()
-        else:
-            st.session_state.messages.append({
-                "role": "ai",
-                "text": data["answer"],
-                "sources": data.get("sources", [])
-            })
+        
+        with st.chat_message("assistant"):
+            placeholder = st.empty()
+            full_answer = ""
+            res, err = call_api(question, history=history)
+            if err:
+                st.markdown(f'<div class="error-box">⚠ {err}</div>', unsafe_allow_html=True)
+                st.session_state.messages.pop()
+            else:
+                for chunk in res.iter_content(chunk_size=None, decode_unicode=True):
+                    full_answer += chunk
+                    placeholder.markdown(full_answer + "▌")
+                placeholder.markdown(full_answer)
+                st.session_state.messages.append({
+                    "role": "ai",
+                    "text": full_answer,
+                    "sources": []
+                })
         st.rerun()

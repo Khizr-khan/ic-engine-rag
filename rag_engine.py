@@ -142,6 +142,38 @@ class RAGEngine:
 
     def get_doc_count(self) -> int:
         return self.vectorstore._collection.count()
+    
+    def ask_stream(self, question: str, top_k: int = 10, history: list = []):
+        """Generator that yields answer chunks as they arrive"""
+        question = self.enhance_question(question)
+
+        retriever = self.vectorstore.as_retriever(
+            search_type="similarity",
+            search_kwargs={"k": top_k}
+        )
+        docs = retriever.invoke(question)
+
+        if not docs:
+            yield "No documents found in the database."
+            return
+
+        context = "\n\n".join(d.page_content for d in docs)
+
+        history_text = ""
+        if history:
+            for msg in history[-4:]:
+                role = "Student" if msg["role"] == "user" else "Professor"
+                history_text += f"{role}: {msg['content']}\n"
+
+        prompt_value = self.prompt.format(
+            context=context,
+            question=question,
+            history=history_text
+        )
+
+        # Stream the response
+        for chunk in self.llm.stream(prompt_value):
+            yield chunk.content
 
 
 rag = RAGEngine()

@@ -107,3 +107,23 @@ def list_docs():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Could not retrieve document list: {str(e)}")
+    
+from fastapi.responses import StreamingResponse
+
+@app.post("/ask-stream")
+def ask_stream(body: AskRequest):
+    if not body.question.strip():
+        raise HTTPException(status_code=400, detail="Question cannot be empty")
+    if len(body.question.strip()) < 10:
+        raise HTTPException(status_code=400, detail="Question is too short")
+    if len(body.question.strip()) > 500:
+        raise HTTPException(status_code=400, detail="Question is too long")
+
+    history = [{"role": m.role, "content": m.content}
+               for m in (body.history or [])]
+
+    def generate():
+        for chunk in rag.ask_stream(body.question, top_k=10, history=history):
+            yield chunk
+
+    return StreamingResponse(generate(), media_type="text/plain")
