@@ -66,14 +66,26 @@ class RAGEngine:
         )
         self.prompt = PromptTemplate.from_template(PROMPT_TEMPLATE)
 
-    def enhance_question(self, question: str) -> str:
+    def enhance_question(self, question: str, history: list = []) -> str:
         question = question.strip()
 
-        # Short answer keywords — don't expand these
-        short_keywords = [
-            "only", "just", "formula", "definition only",
-            "give me formula", "only formula", "briefly"
-        ]
+        short_keywords = ["only", "just", "briefly"]
+        formula_keywords = ["formula", "equation", "expression"]
+        
+        # If asking for formula/equation without specifying topic
+        # — get topic from history
+        if any(kw in question.lower() for kw in formula_keywords):
+            if history:
+                # Get last user question to find the topic
+                last_user_msg = ""
+                for msg in reversed(history):
+                    if msg["role"] == "user":
+                        last_user_msg = msg["content"]
+                        break
+                if last_user_msg:
+                    return f"formula for {last_user_msg}"
+            return question
+
         if any(kw in question.lower() for kw in short_keywords):
             return question
 
@@ -89,7 +101,7 @@ class RAGEngine:
         if not is_proper_question:
             return f"Explain {question} in detail"
         return question
-
+    
     def ask(self, question: str, top_k: int = 6, history: list = []) -> dict:
         question = self.enhance_question(question)
 
@@ -145,7 +157,7 @@ class RAGEngine:
     
     def ask_stream(self, question: str, top_k: int = 10, history: list = []):
         """Generator that yields answer chunks as they arrive"""
-        question = self.enhance_question(question)
+        question = self.enhance_question(question, history)
 
         retriever = self.vectorstore.as_retriever(
             search_type="similarity",
