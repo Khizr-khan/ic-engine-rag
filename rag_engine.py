@@ -45,6 +45,8 @@ STRICT RULES:
 - NEVER make up information
 - If context contains garbled symbols like ��, ignore them and write formula using proper notation
 - Always write variables with underscore subscripts: V_C, V_S, V_T, T_1, T_2, P_1, P_2, η_th, η_vol
+- When giving a formula always explain each term in a Where: section
+- If student says "regenerate", "try again", "different answer" → provide same information restructured with more examples
 
 - When giving a formula, always explain each term immediately after like this:
   bmep = bp / (L × A × n × K / 60000)
@@ -190,47 +192,61 @@ class RAGEngine:
                 })
 
         return {"answer": answer, "sources": sources}
-    
-    def generate_quiz(self, topic: str, num_questions: int = 10) -> list:
+    def generate_quiz(self, topic: str, num_questions: int = 5) -> list:
         """Generate quiz questions from course material"""
-    
-    # Retrieve relevant chunks for the topic
         docs = self.vectorstore.similarity_search(topic, k=20)
         context = "\n\n".join(d.page_content for d in docs)
-    
+
+        # Use higher temperature for more creative and varied quiz questions
+        quiz_llm = ChatGroq(
+            model="llama-3.3-70b-versatile",
+            temperature=0.4
+        )
+
         quiz_prompt = f"""You are an IC Engine professor creating a quiz.
         Based on the context below, generate exactly {num_questions} multiple choice questions about {topic}.
 
-    Format each question EXACTLY like this:
-    Q1: [question text]
-    A) [option]
-    B) [option]
-    C) [option]
-    D) [option]
-    Answer: [correct letter]
-    Explanation: [brief explanation from context]
+        Format each question EXACTLY like this (use @@@ as separator between questions):
 
-    ---
+        Q1: [question text]
+        A) [option]
+        B) [option]
+        C) [option]
+        D) [option]
+        Answer: [correct letter]
+        Explanation: [brief explanation]
 
-    Context:
-    {context}
+        @@@
 
-    Generate {num_questions} questions now:"""
+        Q2: [question text]
+        A) [option]
+        B) [option]
+        C) [option]
+        D) [option]
+        Answer: [correct letter]
+        Explanation: [brief explanation]
 
-        response = self.llm.invoke(quiz_prompt).content
+        @@@
+
+        Context:
+        {context}
+
+        Generate exactly {num_questions} questions now:"""
+
+        response = quiz_llm.invoke(quiz_prompt).content
         return self.parse_quiz(response)
 
     def parse_quiz(self, raw: str) -> list:
         """Parse raw quiz text into structured questions"""
         questions = []
-        blocks = raw.strip().split("---")
+        blocks = raw.strip().split("@@@")
         for block in blocks:
-            if "Q" in block and "Answer:" in block:
+            if "Answer:" in block:
                 lines = block.strip().split("\n")
                 q = {"question": "", "options": {}, "answer": "", "explanation": ""}
                 for line in lines:
                     line = line.strip()
-                    if line.startswith("Q") and ":" in line:
+                    if line and line[0] == "Q" and ":" in line:
                         q["question"] = line.split(":", 1)[1].strip()
                     elif line.startswith("A)"):
                         q["options"]["A"] = line[2:].strip()
@@ -263,13 +279,15 @@ class RAGEngine:
     def get_doc_count(self) -> int:
         return self.vectorstore._collection.count()
     
+    
+
     def ask_stream(self, question: str, top_k: int = 10, history: list = []):
         """Generator that yields answer chunks as they arrive"""
         question = self.enhance_question(question, history)
 
         retriever = self.vectorstore.as_retriever(
-            search_type="similarity",
-            search_kwargs={"k": top_k}
+            search_type="mmr",
+            search_kwargs={"k": top_k, "fetch_k": 20}
         )
         docs = retriever.invoke(question)
 
