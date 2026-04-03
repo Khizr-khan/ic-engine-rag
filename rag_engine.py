@@ -79,8 +79,13 @@ class RAGEngine:
             persist_directory=CHROMA_DIR,
             embedding_function=self.embeddings
         )
+        # self.llm = ChatGroq(
+        #     model="llama-3.3-70b-versatile",
+        #     temperature=0
+        # )
+
         self.llm = ChatGroq(
-            model="llama-3.3-70b-versatile",
+            model="llama-3.1-8b-instant",
             temperature=0
         )
         self.prompt = PromptTemplate.from_template(PROMPT_TEMPLATE)
@@ -204,8 +209,13 @@ class RAGEngine:
         context = "\n\n".join(d.page_content for d in docs)
 
         # Use higher temperature for more creative and varied quiz questions
+        # quiz_llm = ChatGroq(
+        #     model="llama-3.3-70b-versatile",
+        #     temperature=0.4
+        # )
+
         quiz_llm = ChatGroq(
-            model="llama-3.3-70b-versatile",
+            model="llama-3.1-8b-instant",
             temperature=0.4
         )
 
