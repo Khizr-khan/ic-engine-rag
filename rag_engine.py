@@ -46,6 +46,16 @@ STRICT RULES:
 - If context contains garbled symbols like ��, ignore them and write formula using proper notation
 - Always write variables with underscore subscripts: V_C, V_S, V_T, T_1, T_2, P_1, P_2, η_th, η_vol
 
+- When giving a formula, always explain each term immediately after like this:
+  bmep = bp / (L × A × n × K / 60000)
+  Where:
+  bmep = brake mean effective pressure (kPa)
+  bp   = brake power (kW)
+  L    = stroke length (m)
+  A    = piston cross-sectional area (m²)
+  n    = engine speed (rpm)
+  K    = number of cylinders
+
 Context:
 {context}
 
@@ -81,16 +91,20 @@ class RAGEngine:
         explain_keywords = ["explain", "elaborate", "more detail", "tell me more", "in detail"]
 
         # If asking for formula without specifying topic — get topic from history
+        # If asking for formula without specifying topic — get topic from history
+# But NOT if asking about meaning/explanation of formula
         if any(kw in question.lower() for kw in formula_keywords):
-            if history:
+            if "meaning" in question.lower() or "explain" in question.lower():
+        # Student wants explanation — don't treat as formula request
+                pass
+            elif history:
                 last_user_msg = ""
                 for msg in reversed(history):
-                    if msg["role"] == "user":
-                        last_user_msg = msg["content"]
-                        break
+                     if msg["role"] == "user":
+                         last_user_msg = msg["content"]
+                         break
                 if last_user_msg:
                     return f"formula for {last_user_msg}"
-            return question
 
         # If asking to explain without specifying topic — get topic from history
         if any(kw in question.lower() for kw in explain_keywords):
