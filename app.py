@@ -27,11 +27,8 @@ st.markdown("""
 
 .app-header {
     display: flex; align-items: center; gap: 14px;
-    padding: 18px 24px;
-    background: rgba(10,14,10,0.92);
-    backdrop-filter: blur(16px);
-    border-bottom: 1px solid rgba(74,222,128,0.12);
-    margin-bottom: 24px;
+    padding: 10px 0;
+    background: transparent;
 }
 .header-icon {
     width: 42px; height: 42px; border-radius: 11px;
@@ -109,6 +106,7 @@ st.markdown("""
     font-family: 'IBM Plex Mono', monospace !important;
     font-size: 14px !important; padding: 12px 15px !important;
     resize: none !important;
+    min-height: 80px !important;
 }
 .stTextInput > div > div > input:focus,
 .stTextArea > div > div > textarea:focus {
@@ -216,7 +214,7 @@ hr { border-color: rgba(74,222,128,0.1) !important; margin: 16px 0 !important; }
 </svg>
 """, unsafe_allow_html=True)
 
-# ── Token stats helper ────────────────────────────────────────────────────────
+# ── Token stats helpers ───────────────────────────────────────────────────────
 def get_token_stats():
     try:
         res = requests.get(f"{API_URL}/token-stats", timeout=5)
@@ -254,17 +252,17 @@ if "quiz_answered" not in st.session_state:
     st.session_state.quiz_answered = False
 if "last_result" not in st.session_state:
     st.session_state.last_result = None
+if "input_value" not in st.session_state:
+    st.session_state.input_value = ""
 
-# ── Header ────────────────────────────────────────────────────────────────────
-# Fetch token stats
+# ── Header with token tracker and model switcher ──────────────────────────────
 stats = get_token_stats()
 
-# Header with token tracker
 col_header, col_model, col_tokens = st.columns([3, 2, 2])
 
 with col_header:
     st.markdown("""
-    <div class="app-header" style="border-bottom:none;padding:10px 0;">
+    <div class="app-header">
       <div class="header-icon">⚙️</div>
       <div>
         <div class="header-title">IC Engine Assistant</div>
@@ -276,7 +274,6 @@ with col_header:
 with col_model:
     st.markdown("<div style='padding-top:14px'>", unsafe_allow_html=True)
     current_model = stats["model"] if stats else "llama-3.3-70b-versatile"
-    model_label = "70B Quality" if "70b" in current_model else "8B Fast"
     selected = st.selectbox(
         "Model",
         options=["llama-3.3-70b-versatile", "llama-3.1-8b-instant"],
@@ -286,7 +283,7 @@ with col_model:
     )
     if selected != current_model:
         if switch_model(selected):
-            st.success(f"Switched to {selected}!")
+            st.success("Switched!")
             st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -300,8 +297,8 @@ with col_tokens:
         color = "#4ade80" if pct < 70 else "#facc15" if pct < 90 else "#f87171"
         st.markdown(f"""
         <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:{color}">
-            TOKENS USED: {used:,} / {limit:,}<br>
-            REMAINING: {remaining:,} ({100-pct:.0f}%)<br>
+            TOKENS: {used:,} / {limit:,}<br>
+            LEFT: {remaining:,} ({100-pct:.0f}%)<br>
             <div style="background:#1a3a1a;border-radius:4px;height:6px;margin-top:4px">
                 <div style="background:{color};width:{min(pct,100)}%;height:6px;border-radius:4px"></div>
             </div>
@@ -326,10 +323,8 @@ def build_history():
     return history
 
 def format_subscripts(text: str) -> str:
-    # Remove markdown bold and italic
     text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
     text = re.sub(r'\*(.*?)\*', r'\1', text)
-    # Subscripts
     text = re.sub(r'V_([A-Za-z0-9]+)', r'V<sub>\1</sub>', text)
     text = re.sub(r'T_([A-Za-z0-9]+)', r'T<sub>\1</sub>', text)
     text = re.sub(r'P_([A-Za-z0-9]+)', r'P<sub>\1</sub>', text)
@@ -398,9 +393,10 @@ def is_quiz_request(question: str):
 
 def render_message(msg):
     if msg["role"] == "user":
+        text = msg["text"].replace('\n', '<br>')
         st.markdown(f"""
         <div class="user-bubble">
-          <div class="user-bubble-inner">{msg["text"]}</div>
+          <div class="user-bubble-inner">{text}</div>
         </div>
         """, unsafe_allow_html=True)
     else:
@@ -452,7 +448,6 @@ def render_quiz():
         for i, (letter, option) in enumerate(options.items()):
             with cols[i % 2]:
                 if st.button(f"{letter}) {option}", key=f"opt_{idx}_{letter}"):
-                    # Take only first character of answer in case Groq returns "A) something"
                     correct = q["answer"].upper().strip()[0] if q["answer"].strip() else ""
                     given = letter.upper()
                     is_correct = given == correct
@@ -484,6 +479,7 @@ def render_quiz():
             st.session_state.quiz_index += 1
             st.session_state.quiz_answered = False
             st.rerun()
+
 # ── Main chat area ────────────────────────────────────────────────────────────
 if len(st.session_state.messages) == 0 and not st.session_state.quiz_mode:
     st.markdown("""
@@ -599,7 +595,8 @@ with col1:
         placeholder="Ask a question or say 'ask me 5 questions on SI engine'...",
         label_visibility="collapsed",
         height=80,
-        key="input_area"
+        key="input_area",
+        value=st.session_state.input_value
     )
 with col2:
     st.markdown("<div style='padding-top:20px'>", unsafe_allow_html=True)
@@ -609,11 +606,13 @@ with col2:
 st.markdown("""
 <div style="text-align:center;font-size:10px;color:#4b5563;
 font-family:'IBM Plex Mono',monospace;letter-spacing:0.05em;margin-top:4px;">
-CTRL+ENTER TO SEND
+CLICK SEND TO SUBMIT
 </div>
 """, unsafe_allow_html=True)
 
+# ── Process question ──────────────────────────────────────────────────────────
 if submitted and user_input.strip():
+    st.session_state.input_value = ""  # clear input
     question = user_input.strip()
     if len(question) < 5:
         st.markdown('<div class="error-box">⚠ Question is too short</div>', unsafe_allow_html=True)
