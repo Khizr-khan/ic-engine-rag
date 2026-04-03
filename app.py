@@ -101,14 +101,17 @@ st.markdown("""
     border-radius: 8px; margin: 4px 0;
 }
 
-.stTextInput > div > div > input {
+.stTextInput > div > div > input,
+.stTextArea > div > div > textarea {
     background: rgba(14,18,14,0.85) !important;
     border: 1px solid rgba(74,222,128,0.2) !important;
     border-radius: 12px !important; color: #e8e6df !important;
     font-family: 'IBM Plex Mono', monospace !important;
     font-size: 14px !important; padding: 12px 15px !important;
+    resize: none !important;
 }
-.stTextInput > div > div > input:focus {
+.stTextInput > div > div > input:focus,
+.stTextArea > div > div > textarea:focus {
     border-color: #4ade80 !important;
     box-shadow: 0 0 0 2px rgba(74,222,128,0.15) !important;
 }
@@ -401,7 +404,7 @@ def render_message(msg):
         </div>
         """, unsafe_allow_html=True)
     else:
-        formatted_text = format_subscripts(msg["text"])
+        formatted_text = format_subscripts(msg["text"]).replace('\n', '<br>')
         st.markdown(f"""
         <div class="ai-bubble">
           <div class="ai-bubble-inner">{formatted_text}</div>
@@ -481,7 +484,6 @@ def render_quiz():
             st.session_state.quiz_index += 1
             st.session_state.quiz_answered = False
             st.rerun()
-
 # ── Main chat area ────────────────────────────────────────────────────────────
 if len(st.session_state.messages) == 0 and not st.session_state.quiz_mode:
     st.markdown("""
@@ -490,7 +492,7 @@ if len(st.session_state.messages) == 0 and not st.session_state.quiz_mode:
       <div class="empty-title">Ask anything about IC Engines</div>
       <div class="empty-subtitle">
         Answers sourced directly from your course documents.
-        You can also say "ask me 5 questions on SI engine" to start a quiz!
+        Say "ask me 5 questions on SI engine" to start a quiz!
       </div>
     </div>
     <div class="sugg-title">SUGGESTED QUESTIONS</div>
@@ -565,21 +567,21 @@ if st.session_state.suggested:
             st.session_state.messages.pop()
         else:
             placeholder = st.empty()
-            full_answer = ""            
+            full_answer = ""
             try:
                 for chunk in res.iter_content(chunk_size=None, decode_unicode=True):
                     if chunk:
                         full_answer += chunk
-                        placeholder.markdown(format_subscripts(full_answer) + "▌", unsafe_allow_html=True)
+                        display_text = format_subscripts(full_answer).replace('\n', '<br>')
+                        placeholder.markdown(display_text + "▌", unsafe_allow_html=True)
             except Exception:
-                pass  # stream ended early — show whatever was received
+                pass
             finally:
                 if full_answer:
-                    placeholder.markdown(format_subscripts(full_answer), unsafe_allow_html=True)
+                    display_text = format_subscripts(full_answer).replace('\n', '<br>')
+                    placeholder.markdown(display_text, unsafe_allow_html=True)
                 else:
                     placeholder.markdown("Connection dropped. Please try again.", unsafe_allow_html=True)
-
-            
             st.session_state.messages.append({
                 "role": "ai",
                 "text": full_answer,
@@ -587,28 +589,30 @@ if st.session_state.suggested:
             })
         st.rerun()
 
-# ── Input form ────────────────────────────────────────────────────────────────
+# ── Input area ────────────────────────────────────────────────────────────────
 st.markdown("<hr>", unsafe_allow_html=True)
 
-with st.form("chat_form", clear_on_submit=True):
-    col1, col2 = st.columns([5, 1])
-    with col1:
-        user_input = st.text_input(
-            label="question",
-            placeholder="Ask a question or say 'ask me 5 questions on SI engine'...",
-            label_visibility="collapsed"
-        )
-    with col2:
-        submitted = st.form_submit_button("SEND ➤", use_container_width=True)
+col1, col2 = st.columns([5, 1])
+with col1:
+    user_input = st.text_area(
+        label="question",
+        placeholder="Ask a question or say 'ask me 5 questions on SI engine'...",
+        label_visibility="collapsed",
+        height=80,
+        key="input_area"
+    )
+with col2:
+    st.markdown("<div style='padding-top:20px'>", unsafe_allow_html=True)
+    submitted = st.button("SEND ➤", use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown("""
 <div style="text-align:center;font-size:10px;color:#4b5563;
 font-family:'IBM Plex Mono',monospace;letter-spacing:0.05em;margin-top:4px;">
-PRESS ENTER TO SEND
+CTRL+ENTER TO SEND
 </div>
 """, unsafe_allow_html=True)
 
-# ── Process question ──────────────────────────────────────────────────────────
 if submitted and user_input.strip():
     question = user_input.strip()
     if len(question) < 5:
@@ -651,12 +655,14 @@ if submitted and user_input.strip():
                     for chunk in res.iter_content(chunk_size=None, decode_unicode=True):
                         if chunk:
                             full_answer += chunk
-                            placeholder.markdown(format_subscripts(full_answer) + "▌", unsafe_allow_html=True)
+                            display_text = format_subscripts(full_answer).replace('\n', '<br>')
+                            placeholder.markdown(display_text + "▌", unsafe_allow_html=True)
                 except Exception:
-                    pass  # stream ended early — show whatever was received
+                    pass
                 finally:
                     if full_answer:
-                        placeholder.markdown(format_subscripts(full_answer), unsafe_allow_html=True)
+                        display_text = format_subscripts(full_answer).replace('\n', '<br>')
+                        placeholder.markdown(display_text, unsafe_allow_html=True)
                     else:
                         placeholder.markdown("Connection dropped. Please try again.", unsafe_allow_html=True)
                 st.session_state.messages.append({
@@ -665,4 +671,3 @@ if submitted and user_input.strip():
                     "sources": []
                 })
             st.rerun()
-

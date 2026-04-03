@@ -133,6 +133,21 @@ IMPORTANT FORMULAS FOR NUMERICAL PROBLEMS:
   Where:
   bp = brake power, ip = indicated power, fp = friction power
 
+  ip = imep × L × A × (N/2) × K / 60
+Where:
+ip   = indicated power (kW)
+imep = indicated mean effective pressure (kPa)
+L    = stroke length (m)
+A    = piston cross-sectional area (m²)
+N    = engine speed (rpm) — divide by 2 for 4-stroke
+K    = number of cylinders
+60   = converts per minute to per second
+
+Otto cycle isentropic temperature:
+T2 = T1 × r^(γ-1)
+Note: 9^0.4 = 2.408 NOT 3.483
+γ-1 = 0.4 for air (γ=1.4)
+
 You ARE allowed to solve numerical problems using these formulas even if the exact problem is not in the textbook.
 
 TYPE 8 — FOLLOW UP
