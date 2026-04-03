@@ -73,6 +73,20 @@ def generate_quiz(body: dict):
         return {"questions": questions}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Quiz generation failed: {str(e)}")
+    
+@app.get("/token-stats")
+def get_token_stats():
+    return rag.get_token_stats()
+
+@app.post("/switch-model")
+def switch_model(body: dict):
+    model = body.get("model", "")
+    if model not in ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]:
+        raise HTTPException(status_code=400, detail="Invalid model name")
+    rag.switch_model(model)
+    return {"message": f"Switched to {model}", "model": model}
+
+
 
 @app.post("/ingest", response_model=IngestResponse)
 async def ingest_files(

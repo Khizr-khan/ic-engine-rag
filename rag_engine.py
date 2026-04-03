@@ -11,6 +11,18 @@ load_dotenv()
 CHROMA_DIR = "./chroma_ic_db"
 HF_REPO_ID = "Khizr72/ic-engine-chromadb"
 
+# Token tracking
+token_stats = {
+    "used": 0,
+    "limit": 100000,
+    "model": "llama-3.3-70b-versatile"
+}
+
+MODELS = {
+    "llama-3.3-70b-versatile": {"limit": 100000, "label": "70B (High Quality)"},
+    "llama-3.1-8b-instant":    {"limit": 500000, "label": "8B (Fast)"},
+}
+
 def download_database():
     if not os.path.exists(CHROMA_DIR) or not os.listdir(CHROMA_DIR):
         print("Database not found locally — downloading from Hugging Face...")
@@ -30,12 +42,8 @@ PROMPT_TEMPLATE = """You are an IC Engine professor. Answer the question using O
 
 STRICT RULES:
 - If question contains "only", "just", "formula only", "definition only" → respond in 1-3 lines MAXIMUM. Nothing else.
-- If question asks "why", "how does", "what happens", "compare", "difference" → use Chain of Thought:
-  Think step by step:
-  Step 1: What is being asked?
-  Step 2: What relevant concepts are in the context?
-  Step 3: How do these concepts connect logically?
-  Step 4: Form a clear final answer.
+- If question asks "why", "how does", "what happens", "compare", "difference" → think step by step internally but write ONLY the final answer. Do NOT show Step 1, Step 2 etc in your response.
+
 - If question asks to "explain", "describe", "elaborate", "detail" → give full explanation
 - If question asks for "diagram" → draw ASCII art
 - NEVER add definitions, examples, or extra info when student asks for something specific
@@ -79,16 +87,31 @@ class RAGEngine:
             persist_directory=CHROMA_DIR,
             embedding_function=self.embeddings
         )
-        # self.llm = ChatGroq(
-        #     model="llama-3.3-70b-versatile",
-        #     temperature=0
-        # )
-
+        self.current_model = "llama-3.3-70b-versatile"
         self.llm = ChatGroq(
-            model="llama-3.1-8b-instant",
+            model=self.current_model,
             temperature=0
         )
         self.prompt = PromptTemplate.from_template(PROMPT_TEMPLATE)
+
+    def switch_model(self, model_name: str):
+        """Switch to a different model"""
+        if model_name in MODELS:
+            self.current_model = model_name
+            self.llm = ChatGroq(model=model_name, temperature=0)
+            token_stats["model"] = model_name
+            token_stats["used"] = 0
+            print(f"Switched to model: {model_name}")
+
+    def get_token_stats(self):
+        return {
+            "used": token_stats["used"],
+            "limit": MODELS[self.current_model]["limit"],
+            "remaining": MODELS[self.current_model]["limit"] - token_stats["used"],
+            "model": self.current_model,
+            "label": MODELS[self.current_model]["label"],
+            "percent_used": round(token_stats["used"] / MODELS[self.current_model]["limit"] * 100, 1)
+        }
 
     def enhance_question(self, question: str, history: list = []) -> str:
         question = question.strip()
@@ -215,10 +238,9 @@ class RAGEngine:
         # )
 
         quiz_llm = ChatGroq(
-            model="llama-3.1-8b-instant",
-            temperature=0.4
+        model=self.current_model,
+        temperature=0.4
         )
-
         quiz_prompt = f"""You are an IC Engine professor creating a quiz.
         Based on the context below, generate exactly {num_questions} multiple choice questions about {topic}.
 
@@ -325,9 +347,32 @@ class RAGEngine:
             history=history_text
         )
 
-        # Stream the response
-        for chunk in self.llm.stream(prompt_value):
-            yield chunk.content
+        # Stream the response with auto model switching
+        try:
+            total_chars = 0
+            for chunk in self.llm.stream(prompt_value):
+                content = chunk.content
+                total_chars += len(content)
+                yield content
+            # Estimate tokens (rough: 4 chars per token)
+            token_stats["used"] += len(prompt_value) // 4 + total_chars // 4
+
+        except Exception as e:
+            if "429" in str(e) or "rate_limit" in str(e).lower():
+                # Auto switch to lighter model
+                if self.current_model == "llama-3.3-70b-versatile":
+                    print("Rate limit hit — switching to 8b model automatically")
+                    self.switch_model("llama-3.1-8b-instant")
+                    yield "\n\n⚠️ Switched to faster model due to rate limit. Retrying...\n\n"
+                    try:
+                        for chunk in self.llm.stream(prompt_value):
+                            yield chunk.content
+                    except Exception as e2:
+                        yield "⚠️ Both models rate limited. Please try again tomorrow."
+                else:
+                    yield "⚠️ Daily limit reached on all models. Please try again tomorrow."
+            else:
+                yield f"⚠️ An error occurred: {str(e)}"
 
 
 rag = RAGEngine()

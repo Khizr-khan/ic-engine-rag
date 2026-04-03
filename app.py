@@ -213,6 +213,27 @@ hr { border-color: rgba(74,222,128,0.1) !important; margin: 16px 0 !important; }
 </svg>
 """, unsafe_allow_html=True)
 
+# ── Token stats helper ────────────────────────────────────────────────────────
+def get_token_stats():
+    try:
+        res = requests.get(f"{API_URL}/token-stats", timeout=5)
+        if res.status_code == 200:
+            return res.json()
+    except:
+        pass
+    return None
+
+def switch_model(model: str):
+    try:
+        res = requests.post(
+            f"{API_URL}/switch-model",
+            json={"model": model},
+            timeout=10
+        )
+        return res.status_code == 200
+    except:
+        return False
+
 # ── Session state ─────────────────────────────────────────────────────────────
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -232,15 +253,66 @@ if "last_result" not in st.session_state:
     st.session_state.last_result = None
 
 # ── Header ────────────────────────────────────────────────────────────────────
-st.markdown("""
-<div class="app-header">
-  <div class="header-icon">⚙️</div>
-  <div>
-    <div class="header-title">IC Engine Assistant</div>
-    <div class="header-sub">POWERED BY COURSE MATERIAL</div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+# Fetch token stats
+stats = get_token_stats()
+
+# Header with token tracker
+col_header, col_model, col_tokens = st.columns([3, 2, 2])
+
+with col_header:
+    st.markdown("""
+    <div class="app-header" style="border-bottom:none;padding:10px 0;">
+      <div class="header-icon">⚙️</div>
+      <div>
+        <div class="header-title">IC Engine Assistant</div>
+        <div class="header-sub">POWERED BY COURSE MATERIAL</div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+with col_model:
+    st.markdown("<div style='padding-top:14px'>", unsafe_allow_html=True)
+    current_model = stats["model"] if stats else "llama-3.3-70b-versatile"
+    model_label = "70B Quality" if "70b" in current_model else "8B Fast"
+    selected = st.selectbox(
+        "Model",
+        options=["llama-3.3-70b-versatile", "llama-3.1-8b-instant"],
+        format_func=lambda x: "70B — High Quality" if "70b" in x else "8B — Fast",
+        index=0 if "70b" in current_model else 1,
+        label_visibility="collapsed"
+    )
+    if selected != current_model:
+        if switch_model(selected):
+            st.success(f"Switched to {selected}!")
+            st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
+
+with col_tokens:
+    st.markdown("<div style='padding-top:14px'>", unsafe_allow_html=True)
+    if stats:
+        used = stats["used"]
+        limit = stats["limit"]
+        remaining = stats["remaining"]
+        pct = stats["percent_used"]
+        color = "#4ade80" if pct < 70 else "#facc15" if pct < 90 else "#f87171"
+        st.markdown(f"""
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:{color}">
+            TOKENS USED: {used:,} / {limit:,}<br>
+            REMAINING: {remaining:,} ({100-pct:.0f}%)<br>
+            <div style="background:#1a3a1a;border-radius:4px;height:6px;margin-top:4px">
+                <div style="background:{color};width:{min(pct,100)}%;height:6px;border-radius:4px"></div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6b7a6b">
+            TOKENS: unavailable
+        </div>
+        """, unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+st.markdown("<hr style='border-color:rgba(74,222,128,0.1);margin:0 0 16px 0'>", unsafe_allow_html=True)
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def build_history():
@@ -251,6 +323,10 @@ def build_history():
     return history
 
 def format_subscripts(text: str) -> str:
+    # Remove markdown bold and italic
+    text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
+    text = re.sub(r'\*(.*?)\*', r'\1', text)
+    # Subscripts
     text = re.sub(r'V_([A-Za-z0-9]+)', r'V<sub>\1</sub>', text)
     text = re.sub(r'T_([A-Za-z0-9]+)', r'T<sub>\1</sub>', text)
     text = re.sub(r'P_([A-Za-z0-9]+)', r'P<sub>\1</sub>', text)
@@ -300,6 +376,9 @@ def is_quiz_request(question: str):
         r"take my quiz (?:on|about) (.+)",
         r"give me a quiz (?:on|about) (.+)",
         r"quiz on (.+)",
+        r"take my quiz on (.+)",
+        r"take (\d+) questions? quiz (?:on|about) (.+)",
+        r"(\d+) questions? quiz (?:on|about) (.+)",
     ]
     for pattern in patterns:
         match = re.search(pattern, question.lower())
