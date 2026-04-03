@@ -81,6 +81,9 @@ st.markdown("""
     border: 1px solid rgba(74,222,128,0.3);
     border-radius: 12px; padding: 16px;
     margin: 8px 0;
+    color: #e8e6df;
+    font-size: 14px;
+    line-height: 1.7;
 }
 .quiz-correct {
     color: #4ade80; padding: 10px;
@@ -367,7 +370,8 @@ def render_quiz():
         for i, (letter, option) in enumerate(options.items()):
             with cols[i % 2]:
                 if st.button(f"{letter}) {option}", key=f"opt_{idx}_{letter}"):
-                    correct = q["answer"].upper().strip()
+                    # Take only first character of answer in case Groq returns "A) something"
+                    correct = q["answer"].upper().strip()[0] if q["answer"].strip() else ""
                     given = letter.upper()
                     is_correct = given == correct
                     if is_correct:

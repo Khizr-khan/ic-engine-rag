@@ -108,21 +108,27 @@ class RAGEngine:
                 if last_user_msg:
                     return f"formula for {last_user_msg}"
 
-        # If asking to explain without specifying topic — get topic from history
-        if any(kw in question.lower() for kw in explain_keywords):
-            has_topic = any(
-                question.lower().startswith(w) for w in [
-                    "explain", "describe", "elaborate"
+# If asking for formula without specifying topic — get topic from history
+        if any(kw in question.lower() for kw in formula_keywords):
+            if "meaning" in question.lower() or "explain" in question.lower():
+                pass
+            else:
+                # Check if question already has a topic specified
+                # e.g. "formula for thermal efficiency" already has topic
+                ic_topics = [
+                    "thermal efficiency", "compression ratio", "volumetric efficiency",
+                    "brake power", "indicated power", "bmep", "imep", "turbocharger",
+                    "otto cycle", "diesel cycle", "stroke", "piston", "cylinder"
                 ]
-            ) and len(question.split()) > 3
-            if not has_topic and history:
-                last_user_msg = ""
-                for msg in reversed(history):
-                    if msg["role"] == "user":
-                        last_user_msg = msg["content"]
-                        break
-                if last_user_msg:
-                    return f"Explain {last_user_msg} in detail"
+                has_topic = any(topic in question.lower() for topic in ic_topics)
+                if not has_topic and history:
+                    last_user_msg = ""
+                    for msg in reversed(history):
+                        if msg["role"] == "user":
+                            last_user_msg = msg["content"]
+                            break
+                    if last_user_msg:
+                        return f"formula for {last_user_msg}"
             return question
 
         # Short answer — return as is
