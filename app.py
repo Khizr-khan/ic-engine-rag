@@ -265,7 +265,7 @@ def call_api(question: str, history: list = []):
             f"{API_URL}/ask-stream",
             json={"question": question, "top_k": 10, "history": history},
             stream=True,
-            timeout=120
+            timeout=180
         )
         if res.status_code == 200:
             return res, None
@@ -487,11 +487,18 @@ if st.session_state.suggested:
         else:
             placeholder = st.empty()
             full_answer = ""            
-            for chunk in res.iter_content(chunk_size=None, decode_unicode=True):
-                if chunk:
-                    full_answer += chunk
-                    placeholder.markdown(format_subscripts(full_answer) + "▌", unsafe_allow_html=True)
-            placeholder.markdown(format_subscripts(full_answer), unsafe_allow_html=True)
+            try:
+                for chunk in res.iter_content(chunk_size=None, decode_unicode=True):
+                    if chunk:
+                        full_answer += chunk
+                        placeholder.markdown(format_subscripts(full_answer) + "▌", unsafe_allow_html=True)
+            except Exception:
+                pass  # stream ended early — show whatever was received
+            finally:
+                if full_answer:
+                    placeholder.markdown(format_subscripts(full_answer), unsafe_allow_html=True)
+                else:
+                    placeholder.markdown("Connection dropped. Please try again.", unsafe_allow_html=True)
 
             
             st.session_state.messages.append({
@@ -561,11 +568,18 @@ if submitted and user_input.strip():
             else:
                 placeholder = st.empty()
                 full_answer = ""
-                for chunk in res.iter_content(chunk_size=None, decode_unicode=True):
-                    if chunk:
-                        full_answer += chunk
-                        placeholder.markdown(format_subscripts(full_answer) + "▌", unsafe_allow_html=True)
-                placeholder.markdown(format_subscripts(full_answer), unsafe_allow_html=True)
+                try:
+                    for chunk in res.iter_content(chunk_size=None, decode_unicode=True):
+                        if chunk:
+                            full_answer += chunk
+                            placeholder.markdown(format_subscripts(full_answer) + "▌", unsafe_allow_html=True)
+                except Exception:
+                    pass  # stream ended early — show whatever was received
+                finally:
+                    if full_answer:
+                        placeholder.markdown(format_subscripts(full_answer), unsafe_allow_html=True)
+                    else:
+                        placeholder.markdown("Connection dropped. Please try again.", unsafe_allow_html=True)
                 st.session_state.messages.append({
                     "role": "ai",
                     "text": full_answer,
