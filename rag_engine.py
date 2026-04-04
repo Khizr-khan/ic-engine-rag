@@ -19,8 +19,10 @@ token_stats = {
 }
 
 MODELS = {
-    "llama-3.3-70b-versatile": {"limit": 100000, "label": "70B (High Quality)"},
-    "llama-3.1-8b-instant":    {"limit": 500000, "label": "8B (Fast)"},
+    "llama-3.3-70b-versatile":         {"limit": 100000, "label": "70B (High Quality)"},
+    "llama-3.1-8b-instant":            {"limit": 500000, "label": "8B (Fast)"},
+    "deepseek-r1-distill-llama-70b":   {"limit": 100000, "label": "DeepSeek R1 (Math)"},
+    "qwen-qwq-32b":                    {"limit": 100000, "label": "QwQ 32B (Reasoning)"},
 }
 
 def download_database():
