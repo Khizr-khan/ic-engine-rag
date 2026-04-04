@@ -146,6 +146,13 @@ IMPORTANT FORMULAS FOR NUMERICAL PROBLEMS:
   T_2 = T_1 × r^(γ-1)
   T_3 = T_2 × rc
 
+  Diesel T4 — CORRECT formula:
+    T4 = T3 × (rc/r)^(γ-1)   ← NOT T3 × (1/r)^(γ-1)
+
+    Diesel heat addition — at CONSTANT PRESSURE use Cp:
+    Q_in = Cp × (T3 - T2)   where Cp = γ × Cv
+    Q_out = Cv × (T4 - T1)  ← constant volume rejection
+
 CRITICAL EXPONENT VALUES — use these exact values:
   9^0.4   = 2.408
   10^0.4  = 2.512
