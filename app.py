@@ -270,8 +270,8 @@ if "quiz_answered" not in st.session_state:
     st.session_state.quiz_answered = False
 if "last_result" not in st.session_state:
     st.session_state.last_result = None
-if "input_counter" not in st.session_state:  
-    st.session_state.input_counter = 0
+# if "input_counter" not in st.session_state:  
+#     st.session_state.input_counter = 0
 if "input_value" not in st.session_state:
     st.session_state.input_value = ""
 
@@ -358,6 +358,10 @@ def format_subscripts(text: str) -> str:
     # Remove inline LaTeX $ delimiters
     text = re.sub(r'\$\$(.*?)\$\$', r'\1', text)
     text = re.sub(r'\$(.*?)\$', r'\1', text)
+    # Remove remaining LaTeX curly braces
+    text = re.sub(r'\{(.*?)\}', r'\1', text)
+    # Remove backslashes before %
+    text = text.replace('\\%', '%')
     text = re.sub(r'\\\[|\\\]', '', text)
     text = re.sub(r'\\\(|\\\)', '', text)
     text = re.sub(r'\\frac\{(.*?)\}\{(.*?)\}', r'(\1/\2)', text)
@@ -631,27 +635,25 @@ if st.session_state.suggested:
 # ── Input area ────────────────────────────────────────────────────────────────
 st.markdown("<hr>", unsafe_allow_html=True)
 
-col1, col2 = st.columns([5, 1])
-with col1:
-    if "input_area" not in st.session_state:
-        st.session_state.input_area = ""
-
-    user_input = st.text_area(
-    label="question",
-    placeholder="Ask a question or say 'ask me 5 questions on SI engine'...",
-    label_visibility="collapsed",
-    height=80,
-    key=f"input_area_{st.session_state.get('input_counter', 0)}"
-    )
-with col2:
-    st.markdown("<div style='padding-top:20px'>", unsafe_allow_html=True)
-    submitted = st.button("SEND ➤", use_container_width=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+with st.form("chat_form", clear_on_submit=True):
+    col1, col2 = st.columns([5, 1])
+    with col1:
+        user_input = st.text_area(
+            label="question",
+            placeholder="Ask a question or say 'ask me 5 questions on SI engine'...",
+            label_visibility="collapsed",
+            height=80,
+            key="input_area"
+        )
+    with col2:
+        st.markdown("<div style='padding-top:20px'>", unsafe_allow_html=True)
+        submitted = st.form_submit_button("SEND ➤", use_container_width=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown("""
 <div style="text-align:center;font-size:10px;color:#4b5563;
 font-family:'IBM Plex Mono',monospace;letter-spacing:0.05em;margin-top:4px;">
-CLICK SEND TO SUBMIT
+CTRL+ENTER TO SEND
 </div>
 """, unsafe_allow_html=True)
 
