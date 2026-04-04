@@ -304,7 +304,7 @@ with col_model:
     format_func=lambda x: {
         "llama-3.3-70b-versatile": "70B — High Quality",
         "llama-3.1-8b-instant": "8B — Fast",
-        "meta-llama/llama-4-scout-17b-16e-instruct": "Llama 4 — Math",
+        "meta-llama/llama-4-scout-17b-16e-instruct": "Llama 4 Scout",
     }[x],
         index=0 if "70b" in current_model else 2 if "scout" in current_model else 1,
         label_visibility="collapsed"
