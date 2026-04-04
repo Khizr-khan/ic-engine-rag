@@ -658,8 +658,8 @@ if submitted and user_input.strip():
     question = user_input.strip()
     if len(question) < 5:
         st.markdown('<div class="error-box">⚠ Question is too short</div>', unsafe_allow_html=True)
-    elif len(question) > 500:
-        st.markdown('<div class="error-box">⚠ Question is too long — maximum 500 characters</div>', unsafe_allow_html=True)
+    elif len(question) > 1000:
+        st.markdown('<div class="error-box">⚠ Question is too long — maximum 1000 characters</div>', unsafe_allow_html=True)
     else:
         is_quiz, num_q, topic = is_quiz_request(question)
 

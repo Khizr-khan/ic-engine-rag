@@ -48,8 +48,8 @@ def ask_question(body: AskRequest):
         raise HTTPException(status_code=400, detail="Question cannot be empty")
     if len(body.question.strip()) < 10:
         raise HTTPException(status_code=400, detail="Question is too short — please ask a complete question")
-    if len(body.question.strip()) > 500:
-        raise HTTPException(status_code=400, detail="Question is too long — maximum 500 characters allowed")
+    if len(body.question.strip()) > 1000:
+        raise HTTPException(status_code=400, detail="Question is too long — maximum 1000 characters allowed")
     try:
         history = [{"role": m.role, "content": m.content}
                    for m in (body.history or [])]
@@ -145,7 +145,7 @@ def ask_stream(body: AskRequest):
         raise HTTPException(status_code=400, detail="Question cannot be empty")
     if len(body.question.strip()) < 10:
         raise HTTPException(status_code=400, detail="Question is too short")
-    if len(body.question.strip()) > 500:
+    if len(body.question.strip()) > 1000:
         raise HTTPException(status_code=400, detail="Question is too long")
 
     history = [{"role": m.role, "content": m.content}
