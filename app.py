@@ -600,13 +600,15 @@ st.markdown("<hr>", unsafe_allow_html=True)
 
 col1, col2 = st.columns([5, 1])
 with col1:
+    if "input_area" not in st.session_state:
+        st.session_state.input_area = ""
+
     user_input = st.text_area(
         label="question",
         placeholder="Ask a question or say 'ask me 5 questions on SI engine'...",
         label_visibility="collapsed",
         height=80,
-        key="input_area",
-        value=st.session_state.input_value
+        key="input_area"
     )
 with col2:
     st.markdown("<div style='padding-top:20px'>", unsafe_allow_html=True)
@@ -622,7 +624,7 @@ CLICK SEND TO SUBMIT
 
 # ── Process question ──────────────────────────────────────────────────────────
 if submitted and user_input.strip():
-    st.session_state.input_value = ""  # clear input
+    st.session_state.input_area = ""
     question = user_input.strip()
     if len(question) < 5:
         st.markdown('<div class="error-box">⚠ Question is too short</div>', unsafe_allow_html=True)
