@@ -538,12 +538,26 @@ class RAGEngine:
                 client = GroqClient(api_key=os.getenv("GROQ_API_KEY"))
                 yield "🔢 Running calculations...\n\n"
 
-                numerical_prompt = f"""You are an expert IC Engine professor. 
-Solve this numerical problem step by step using Python code for all calculations.
-Always use math.pi for π, show the formula, then calculate using Python.
-Give the final answer clearly with units.
+                numerical_prompt = f"""You are an expert IC Engine professor with Python programming skills.
+                Solve this numerical problem by writing and executing correct Python code.
 
-Problem: {question}"""
+                STRICT PYTHON RULES:
+                - Always import math at the top
+                - Use math.pi for π
+                - Use ** for powers (e.g. 9**0.4 not 9^0.4)
+                - Use * for ALL multiplications — NEVER omit * between variables
+                - Print each result with units
+                - For 4-stroke engines: power strokes per second = N/2/60
+
+                CORRECT Python example:
+                import math
+                d = 0.085  # m
+                L = 0.095  # m
+                A = math.pi/4 * d**2  # m²
+                VS = A * L  # m³
+                print(f'VS = {{VS*1e6:.1f}} cc')
+
+                Problem: {question}"""
 
                 response = client.chat.completions.create(
                     model="groq/compound-mini",
