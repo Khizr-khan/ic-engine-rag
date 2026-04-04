@@ -7,10 +7,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ============================================================
-# Keywords that indicate a page is an index/TOC — not content
-# Add more words here if you find other noise pages
-# ============================================================
+
 INDEX_KEYWORDS = [
     "INDEX",
     "S.NO",
@@ -38,7 +35,7 @@ def is_noise_page(text: str, page_num: int) -> bool:
     lines = [l.strip() for l in text.split("\n") if l.strip()]
     if lines:
         short_lines = [l for l in lines if len(l) < 60]
-        if len(short_lines) / len(lines) > 0.85:  # changed from 0.4 to 0.7
+        if len(short_lines) / len(lines) > 0.95:  # increased to 0.95 — keep formula pages
             return True
 
     return False
@@ -75,8 +72,8 @@ def ingest_documents(docs_dir: str = "./ic_engine_docs"):
         return 0, 0
 
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=500,
-        chunk_overlap=50,
+        chunk_size=1500,
+        chunk_overlap=200,
         separators=["\n\n", "\n", ".", " "]
     )
 
