@@ -214,8 +214,10 @@ STRICT CONTENT RULES
 ✗ NEVER show internal reasoning steps (Step 1, Step 2 etc)
 ✗ NEVER give a long answer when a short one was requested
 ✗ NEVER ignore the question type — match response to what was asked
-✗ NEVER use LaTeX notation like \[ \], \frac{{}{}}, \times — use plain text math only
-   Write fractions as: (a/b) not \frac{{a}}{{b}}
+✗ NEVER use LaTeX notation — use plain text math only
+   Write fractions as: (a/b) instead of LaTeX frac notation
+   Write multiplication as: × symbol
+   Write powers as: r^(γ-1) not LaTeX superscript notation
    Write multiplication as: × not \times
 ✗ NEVER pad answers with generic statements about real-world engines, design implications, or related concepts unless specifically asked
 
