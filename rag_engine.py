@@ -533,9 +533,13 @@ class RAGEngine:
             if "429" in str(e) or "rate_limit" in str(e).lower():
                 # Auto switch to lighter model
                 if self.current_model == "llama-3.3-70b-versatile":
+                    print("Rate limit hit — switching to DeepSeek R1 automatically")
+                    self.switch_model("deepseek-r1-distill-llama-70b")
+                    yield "\n\n⚠️ Switched to DeepSeek R1 due to rate limit. Retrying...\n\n"
+                elif self.current_model == "deepseek-r1-distill-llama-70b":
                     print("Rate limit hit — switching to 8b model automatically")
                     self.switch_model("llama-3.1-8b-instant")
-                    yield "\n\n⚠️ Switched to faster model due to rate limit. Retrying...\n\n"
+                    yield "\n\n⚠️ Switched to 8B model due to rate limit. Retrying...\n\n"
                     try:
                         for chunk in self.llm.stream(prompt_value):
                             yield chunk.content
