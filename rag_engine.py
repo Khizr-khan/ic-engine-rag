@@ -536,6 +536,7 @@ class RAGEngine:
             try:
                 from groq import Groq as GroqClient
                 client = GroqClient(api_key=os.getenv("GROQ_API_KEY"))
+                yield "🔢 Running calculations...\n\n"
 
                 numerical_prompt = f"""You are an expert IC Engine professor. 
 Solve this numerical problem step by step using Python code for all calculations.
