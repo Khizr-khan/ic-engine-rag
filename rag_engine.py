@@ -154,6 +154,8 @@ IMPORTANT FORMULAS FOR NUMERICAL PROBLEMS:
     Q_out = Cv × (T4 - T1)  ← constant volume rejection
 
 CRITICAL EXPONENT VALUES — use these exact values:
+  8^0.4   = 2.297
+  8.5^0.4 = 2.354
   9^0.4   = 2.408
   10^0.4  = 2.512
   16^0.4  = 3.031
