@@ -355,6 +355,9 @@ def format_subscripts(text: str) -> str:
     text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
     text = re.sub(r'\*(.*?)\*', r'\1', text)
     # Remove LaTeX delimiters
+    # Remove inline LaTeX $ delimiters
+    text = re.sub(r'\$\$(.*?)\$\$', r'\1', text)
+    text = re.sub(r'\$(.*?)\$', r'\1', text)
     text = re.sub(r'\\\[|\\\]', '', text)
     text = re.sub(r'\\\(|\\\)', '', text)
     text = re.sub(r'\\frac\{(.*?)\}\{(.*?)\}', r'(\1/\2)', text)
