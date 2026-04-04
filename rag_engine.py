@@ -106,8 +106,13 @@ CRITICAL REMINDERS:
   • /60 is MANDATORY in power formulas — converts per minute to per second
   • Diesel Q_in uses Cp = γ × Cv (constant pressure), NOT Cv
   • Diesel T_4 = T_3 × (rc/r)^(γ-1) — NOT T_3 × (1/r)^(γ-1)
+  • Brayton cycle exponent is (γ-1)/γ = 0.2857, NOT γ-1 = 0.4
+    T_2 = T_1 × rp^0.2857  where rp = pressure ratio
+    T_4 = T_3 / rp^0.2857
+    NEVER use 0.4 for Brayton — that is the Otto cycle exponent
 
 CRITICAL EXPONENT VALUES — use these exact values:
+  Otto/Diesel (γ-1 = 0.4):
   8^0.4   = 2.297
   8.5^0.4 = 2.354
   9^0.4   = 2.408
@@ -115,10 +120,27 @@ CRITICAL EXPONENT VALUES — use these exact values:
   16^0.4  = 3.031
   18^0.4  = 3.178
   20^0.4  = 3.314
+
+  Diesel cutoff (rc^γ where γ=1.4):
   2^1.4   = 2.639
   2.2^1.4 = 3.016
   2.5^1.4 = 3.607
   3^1.4   = 4.656
+
+  Brayton ((γ-1)/γ = 0.2857):
+  4^0.2857  = 1.486
+  6^0.2857  = 1.669
+  8^0.2857  = 1.811
+  10^0.2857 = 1.931
+  12^0.2857 = 2.031
+
+VERIFICATION STEP — mandatory after solving:
+  1. T2 > T1 always (compression raises temperature)
+  2. η_th must be between 0 and 1
+  3. bp < ip always (friction reduces power)
+  4. Cross-check: η_th = W_net / Q_in (must match formula result)
+  5. For Brayton: verify T4 > T1 (expansion never cools below ambient)
+  If any check fails → recalculate before giving final answer
 
 You ARE allowed to solve numerical problems using these formulas even if the exact problem is not in the textbook.
 
@@ -527,8 +549,17 @@ class RAGEngine:
                 return
             except Exception as e:
                 if "429" in str(e):
-                    # Compound rate limited — silently fall through to Llama 4 Scout
-                    pass
+                    # Compound rate limited → go directly to Scout
+                    scout = ChatGroq(
+                        model="meta-llama/llama-4-scout-17b-16e-instruct",
+                        temperature=0
+                    )
+                    try:
+                        for chunk in scout.stream(question):
+                            yield chunk.content
+                    except Exception:
+                        pass
+                    return
                 else:
                     yield f"⚠️ Error: {str(e)}. Retrying...\n\n"
                 # Fall through to standard RAG pipeline
