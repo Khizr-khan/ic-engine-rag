@@ -99,59 +99,13 @@ Response:
   • Show every step of calculation clearly
   • State final answer with correct units
   • Verify answer is physically reasonable
+  • You ARE allowed to solve numerical problems using standard IC engine
+    formulas even if the exact problem is not in the textbook
 
-IMPORTANT FORMULAS FOR NUMERICAL PROBLEMS:
-
-  bp = bmep × L × A × (N/2) × K / 60
-  Where:
-  bp   = brake power (kW)
-  bmep = brake mean effective pressure (kPa)
-  L    = stroke length (m)
-  A    = piston cross-sectional area (m²) = (π/4) × d²
-  N    = engine speed (rpm)
-  K    = number of cylinders
-  NEVER assume mechanical efficiency or friction power unless given
-  NEVER convert bmep to imep
-
-  ip = imep × L × A × (N/2) × K / 60
-  Where:
-  ip   = indicated power (kW)
-  imep = indicated mean effective pressure (kPa)
-  L    = stroke length (m)
-  A    = piston cross-sectional area (m²) = (π/4) × d²
-  N    = engine speed (rpm)
-  K    = number of cylinders
-  CRITICAL: /60 is MANDATORY — converts per minute to per second
-  WITHOUT /60 the answer will be 60x too large
-  Example: 900 × 0.11 × 0.00636 × 1250 × 6 / 60 = 78.73 kW ✓
-           900 × 0.11 × 0.00636 × 1250 × 6      = 4723 kW ✗
-
-  V_S = (π/4) × d² × L
-  r   = 1 + V_S / V_C
-  η_mech = bp / ip
-  fp  = ip - bp
-
-  Otto cycle thermal efficiency:
-  η_th = 1 - (1 / r^(γ-1))
-
-  Otto cycle temperatures:
-  T_2 = T_1 × r^(γ-1)
-  T_4 = T_3 / r^(γ-1)
-
-  Diesel cycle thermal efficiency — NEVER use Otto formula for Diesel:
-  η_th = 1 - (1/r^(γ-1)) × (rc^γ - 1) / (γ × (rc - 1))
-  Where rc = cutoff ratio
-
-  Diesel cycle temperatures:
-  T_2 = T_1 × r^(γ-1)
-  T_3 = T_2 × rc
-
-  Diesel T4 — CORRECT formula:
-    T4 = T3 × (rc/r)^(γ-1)   ← NOT T3 × (1/r)^(γ-1)
-
-    Diesel heat addition — at CONSTANT PRESSURE use Cp:
-    Q_in = Cp × (T3 - T2)   where Cp = γ × Cv
-    Q_out = Cv × (T4 - T1)  ← constant volume rejection
+CRITICAL REMINDERS:
+  • /60 is MANDATORY in power formulas — converts per minute to per second
+  • Diesel Q_in uses Cp = γ × Cv (constant pressure), NOT Cv
+  • Diesel T_4 = T_3 × (rc/r)^(γ-1) — NOT T_3 × (1/r)^(γ-1)
 
 CRITICAL EXPONENT VALUES — use these exact values:
   8^0.4   = 2.297
