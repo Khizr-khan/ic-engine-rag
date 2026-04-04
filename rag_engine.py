@@ -538,10 +538,19 @@ class RAGEngine:
                 client = GroqClient(api_key=os.getenv("GROQ_API_KEY"))
                 yield "🔢 Running calculations...\n\n"
 
-                numerical_prompt = f"""{question}
+                numerical_prompt = f"""You are an IC Engine professor.
+                Solve this numerical problem step by step.
 
-                Solve this step by step using Python code. Use math.pi for π and ** for powers."""
+                CRITICAL RULES:
+                - A = π/4 × d² — keep ALL decimal places, do NOT round A
+                - bp = bmep × L × A × (N/2) × K / 60
+                - ip = bp / η_mech
+                - fp = ip - bp
+                - For 4-stroke: use N/2 for power strokes per minute, then divide by 60
+                - 9^0.4=2.408, 10^0.4=2.512, 16^0.4=3.031, 18^0.4=3.178
+                - 8^0.4=2.297, 8.5^0.4=2.354, 2.2^1.4=3.016, 2.5^1.4=3.607
 
+                Problem: {question}"""
                 response = client.chat.completions.create(
                 model="groq/compound-mini",
                 messages=[{"role": "user", "content": numerical_prompt}],
