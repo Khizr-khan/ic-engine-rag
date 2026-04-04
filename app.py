@@ -135,6 +135,24 @@ st.markdown("""
 }
 
 hr { border-color: rgba(74,222,128,0.1) !important; margin: 16px 0 !important; }
+
+.stSelectbox > div > div {
+    background: rgba(14,18,14,0.85) !important;
+    border: 1px solid rgba(74,222,128,0.2) !important;
+    border-radius: 10px !important;
+    color: #e8e6df !important;
+    font-family: 'IBM Plex Mono', monospace !important;
+    font-size: 13px !important;
+    cursor: pointer !important;
+}
+.stSelectbox > div > div > div {
+    color: #e8e6df !important;
+    font-family: 'IBM Plex Mono', monospace !important;
+}
+.stSelectbox input {
+    pointer-events: none !important;
+    caret-color: transparent !important;
+}
 </style>
 
 <svg class="blueprint-bg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice">
