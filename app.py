@@ -351,15 +351,19 @@ def build_history():
     return history
 
 def format_subscripts(text: str) -> str:
+    # Remove markdown bold and italic
     text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
     text = re.sub(r'\*(.*?)\*', r'\1', text)
-    text = re.sub(r'V_([A-Za-z0-9]+)', r'V<sub>\1</sub>', text)
-    text = re.sub(r'T_([A-Za-z0-9]+)', r'T<sub>\1</sub>', text)
-    text = re.sub(r'P_([A-Za-z0-9]+)', r'P<sub>\1</sub>', text)
-    text = re.sub(r'η_([A-Za-z0-9]+)', r'η<sub>\1</sub>', text)
-    text = re.sub(r'W_([A-Za-z0-9]+)', r'W<sub>\1</sub>', text)
-    text = re.sub(r'Q_([A-Za-z0-9]+)', r'Q<sub>\1</sub>', text)
-    return text
+    # Remove LaTeX delimiters
+    text = re.sub(r'\\\[|\\\]', '', text)
+    text = re.sub(r'\\\(|\\\)', '', text)
+    text = re.sub(r'\\frac\{(.*?)\}\{(.*?)\}', r'(\1/\2)', text)
+    text = re.sub(r'\\times', '×', text)
+    text = re.sub(r'\\eta', 'η', text)
+    text = re.sub(r'\\gamma', 'γ', text)
+    text = re.sub(r'\\pi', 'π', text)
+    text = re.sub(r'\\text\{(.*?)\}', r'\1', text)
+    text = re.sub(r'\\\w+', '', text)
 
 def call_api(question: str, history: list = []):
     try:
