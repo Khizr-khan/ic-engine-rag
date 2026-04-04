@@ -299,18 +299,16 @@ with col_model:
     options=[
         "llama-3.3-70b-versatile",
         "llama-3.1-8b-instant",
-        "deepseek-r1-distill-llama-70b",
-        "qwen-qwq-32b"
+        "meta-llama/llama-4-scout-17b-16e-instruct",
     ],
     format_func=lambda x: {
         "llama-3.3-70b-versatile": "70B — High Quality",
         "llama-3.1-8b-instant": "8B — Fast",
-        "deepseek-r1-distill-llama-70b": "DeepSeek R1 — Math",
-        "qwen-qwq-32b": "QwQ 32B — Reasoning"
+        "meta-llama/llama-4-scout-17b-16e-instruct": "Llama 4 — Math",
     }[x],
-    index=0 if "70b" in current_model else 1,
-    label_visibility="collapsed"
-)
+        index=0 if "70b" in current_model else 2 if "scout" in current_model else 1,
+        label_visibility="collapsed"
+    )
     if selected != current_model:
         if switch_model(selected):
             st.success("Switched!")

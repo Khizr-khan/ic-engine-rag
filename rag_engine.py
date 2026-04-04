@@ -19,10 +19,9 @@ token_stats = {
 }
 
 MODELS = {
-    "llama-3.3-70b-versatile":         {"limit": 100000, "label": "70B (High Quality)"},
-    "llama-3.1-8b-instant":            {"limit": 500000, "label": "8B (Fast)"},
-    "deepseek-r1-distill-llama-70b":   {"limit": 100000, "label": "DeepSeek R1 (Math)"},
-    "qwen-qwq-32b":                    {"limit": 100000, "label": "QwQ 32B (Reasoning)"},
+    "llama-3.3-70b-versatile":                  {"limit": 100000, "label": "70B (High Quality)"},
+    "llama-3.1-8b-instant":                     {"limit": 500000, "label": "8B (Fast)"},
+    "meta-llama/llama-4-scout-17b-16e-instruct": {"limit": 100000, "label": "Llama 4 Scout (Math)"},
 }
 
 def download_database():
@@ -531,12 +530,25 @@ class RAGEngine:
 
         except Exception as e:
             if "429" in str(e) or "rate_limit" in str(e).lower():
-                # Auto switch to lighter model
                 if self.current_model == "llama-3.3-70b-versatile":
-                    print("Rate limit hit — switching to DeepSeek R1 automatically")
-                    self.switch_model("deepseek-r1-distill-llama-70b")
-                    yield "\n\n⚠️ Switched to DeepSeek R1 due to rate limit. Retrying...\n\n"
-                elif self.current_model == "deepseek-r1-distill-llama-70b":
+                    print("Rate limit hit — switching to Llama 4 Scout automatically")
+                    self.switch_model("meta-llama/llama-4-scout-17b-16e-instruct")
+                    yield "\n\n⚠️ Switched to Llama 4 Scout due to rate limit. Retrying...\n\n"
+                    try:
+                        for chunk in self.llm.stream(prompt_value):
+                            yield chunk.content
+                    except Exception as e2:
+                        if "429" in str(e2):
+                            self.switch_model("llama-3.1-8b-instant")
+                            yield "\n\n⚠️ Switched to 8B model. Retrying...\n\n"
+                            try:
+                                for chunk in self.llm.stream(prompt_value):
+                                    yield chunk.content
+                            except Exception as e3:
+                                yield "⚠️ All models rate limited. Please try again tomorrow."
+                        else:
+                            yield f"⚠️ An error occurred: {str(e2)}"
+                elif self.current_model == "meta-llama/llama-4-scout-17b-16e-instruct":
                     print("Rate limit hit — switching to 8b model automatically")
                     self.switch_model("llama-3.1-8b-instant")
                     yield "\n\n⚠️ Switched to 8B model due to rate limit. Retrying...\n\n"
@@ -544,7 +556,7 @@ class RAGEngine:
                         for chunk in self.llm.stream(prompt_value):
                             yield chunk.content
                     except Exception as e2:
-                        yield "⚠️ Both models rate limited. Please try again tomorrow."
+                        yield "⚠️ All models rate limited. Please try again tomorrow."
                 else:
                     yield "⚠️ Daily limit reached on all models. Please try again tomorrow."
             else:
