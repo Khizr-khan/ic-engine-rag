@@ -270,8 +270,8 @@ if "quiz_answered" not in st.session_state:
     st.session_state.quiz_answered = False
 if "last_result" not in st.session_state:
     st.session_state.last_result = None
-# if "input_counter" not in st.session_state:  
-#     st.session_state.input_counter = 0
+if "input_counter" not in st.session_state:
+    st.session_state.input_counter = 0
 if "input_value" not in st.session_state:
     st.session_state.input_value = ""
 
@@ -358,10 +358,11 @@ def format_subscripts(text: str) -> str:
     # Remove inline LaTeX $ delimiters
     text = re.sub(r'\$\$(.*?)\$\$', r'\1', text)
     text = re.sub(r'\$(.*?)\$', r'\1', text)
-    # Remove remaining LaTeX curly braces
-    text = re.sub(r'\{(.*?)\}', r'\1', text)
     # Remove backslashes before %
     text = text.replace('\\%', '%')
+    # Remove LaTeX curly braces only in subscript/superscript patterns
+    text = re.sub(r'_\{([^}]+)\}', r'_\1', text)
+    text = re.sub(r'\^\{([^}]+)\}', r'^\1', text)
     text = re.sub(r'\\\[|\\\]', '', text)
     text = re.sub(r'\\\(|\\\)', '', text)
     text = re.sub(r'\\frac\{(.*?)\}\{(.*?)\}', r'(\1/\2)', text)
