@@ -511,10 +511,56 @@ class RAGEngine:
     
     
 
+    def is_numerical_question(self, question: str) -> bool:
+        """Detect if question is a numerical problem requiring calculation"""
+        numerical_keywords = [
+            "calculate", "find", "determine", "compute",
+            "bore", "stroke", "rpm", "kpa", "kw",
+            "efficiency", "pressure", "temperature", "power",
+            "volume", "cylinder", "piston", "ratio"
+        ]
+        count = sum(1 for kw in numerical_keywords if kw in question.lower())
+        # Also check if question has numbers with units
+        import re
+        has_numbers = bool(re.search(r'\d+\s*(mm|kpa|rpm|kw|kj|kg|bar|cc|m)', question.lower()))
+        return count >= 3 or (count >= 2 and has_numbers)
+
     def ask_stream(self, question: str, top_k: int = 10, history: list = []):
         """Generator that yields answer chunks as they arrive"""
         question = self.enhance_question(question, history)
 
+        # ── Numerical question → use compound-mini with code execution ──
+        if self.is_numerical_question(question):
+            try:
+                from groq import Groq as GroqClient
+                client = GroqClient(api_key=os.getenv("GROQ_API_KEY"))
+
+                numerical_prompt = f"""You are an expert IC Engine professor. 
+Solve this numerical problem step by step using Python code for all calculations.
+Always use math.pi for π, show the formula, then calculate using Python.
+Give the final answer clearly with units.
+
+Problem: {question}"""
+
+                response = client.chat.completions.create(
+                    model="groq/compound-mini",
+                    messages=[{"role": "user", "content": numerical_prompt}],
+                    max_tokens=2000
+                )
+                answer = response.choices[0].message.content
+                # Stream it word by word for consistent UI experience
+                words = answer.split(' ')
+                for i, word in enumerate(words):
+                    if i < len(words) - 1:
+                        yield word + ' '
+                    else:
+                        yield word
+                return
+            except Exception as e:
+                yield f"⚠️ Compound model error: {str(e)}. Falling back to standard model...\n\n"
+                # Fall through to standard RAG pipeline
+
+        # ── Standard RAG pipeline for conceptual questions ──
         retriever = self.vectorstore.as_retriever(
             search_type="mmr",
             search_kwargs={"k": top_k, "fetch_k": 20}
