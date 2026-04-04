@@ -270,6 +270,8 @@ if "quiz_answered" not in st.session_state:
     st.session_state.quiz_answered = False
 if "last_result" not in st.session_state:
     st.session_state.last_result = None
+if "input_counter" not in st.session_state:  
+    st.session_state.input_counter = 0
 if "input_value" not in st.session_state:
     st.session_state.input_value = ""
 
@@ -622,11 +624,11 @@ with col1:
         st.session_state.input_area = ""
 
     user_input = st.text_area(
-        label="question",
-        placeholder="Ask a question or say 'ask me 5 questions on SI engine'...",
-        label_visibility="collapsed",
-        height=80,
-        key="input_area"
+    label="question",
+    placeholder="Ask a question or say 'ask me 5 questions on SI engine'...",
+    label_visibility="collapsed",
+    height=80,
+    key=f"input_area_{st.session_state.get('input_counter', 0)}"
     )
 with col2:
     st.markdown("<div style='padding-top:20px'>", unsafe_allow_html=True)
@@ -642,7 +644,7 @@ CLICK SEND TO SUBMIT
 
 # ── Process question ──────────────────────────────────────────────────────────
 if submitted and user_input.strip():
-    st.session_state.input_area = ""
+    st.session_state.input_counter += 1
     question = user_input.strip()
     if len(question) < 5:
         st.markdown('<div class="error-box">⚠ Question is too short</div>', unsafe_allow_html=True)
