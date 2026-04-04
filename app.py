@@ -354,24 +354,33 @@ def format_subscripts(text: str) -> str:
     # Remove markdown bold and italic
     text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
     text = re.sub(r'\*(.*?)\*', r'\1', text)
-    # Remove LaTeX delimiters
     # Remove inline LaTeX $ delimiters
     text = re.sub(r'\$\$(.*?)\$\$', r'\1', text)
     text = re.sub(r'\$(.*?)\$', r'\1', text)
-    # Remove backslashes before %
-    text = text.replace('\\%', '%')
-    # Remove LaTeX curly braces only in subscript/superscript patterns
-    text = re.sub(r'_\{([^}]+)\}', r'_\1', text)
-    text = re.sub(r'\^\{([^}]+)\}', r'^\1', text)
-    text = re.sub(r'\\\[|\\\]', '', text)
-    text = re.sub(r'\\\(|\\\)', '', text)
+    # Remove LaTeX environments
+    text = re.sub(r'\\begin\{.*?\}', '', text)
+    text = re.sub(r'\\end\{.*?\}', '', text)
+    text = re.sub(r'\{aligned\}', '', text)
+    # Remove LaTeX commands
     text = re.sub(r'\\frac\{(.*?)\}\{(.*?)\}', r'(\1/\2)', text)
     text = re.sub(r'\\times', '×', text)
     text = re.sub(r'\\eta', 'η', text)
     text = re.sub(r'\\gamma', 'γ', text)
     text = re.sub(r'\\pi', 'π', text)
     text = re.sub(r'\\text\{(.*?)\}', r'\1', text)
+    text = re.sub(r'\\\[|\\\]', '', text)
+    text = re.sub(r'\\\(|\\\)', '', text)
+    text = re.sub(r'\\;', ' ', text)
+    text = re.sub(r'\\,', ' ', text)
+    text = re.sub(r'\\!', '', text)
+    text = re.sub(r'\\\\', '\n', text)
+    text = re.sub(r'\\_', '_', text)
     text = re.sub(r'\\\w+', '', text)
+    # Remove backslashes before %
+    text = text.replace('\\%', '%')
+    # Remove LaTeX curly braces only in subscript/superscript patterns
+    text = re.sub(r'_\{([^}]+)\}', r'_\1', text)
+    text = re.sub(r'\^\{([^}]+)\}', r'^\1', text)
     # Subscripts
     text = re.sub(r'V_([A-Za-z0-9]+)', r'V<sub>\1</sub>', text)
     text = re.sub(r'T_([A-Za-z0-9]+)', r'T<sub>\1</sub>', text)

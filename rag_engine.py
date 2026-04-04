@@ -543,11 +543,17 @@ class RAGEngine:
                 Solve this step by step using Python code. Use math.pi for π and ** for powers."""
 
                 response = client.chat.completions.create(
-                    model="groq/compound-mini",
-                    messages=[{"role": "user", "content": numerical_prompt}],
-                    max_tokens=2000
-                )
-                answer = response.choices[0].message.content
+                model="groq/compound-mini",
+                messages=[{"role": "user", "content": numerical_prompt}],
+                max_tokens=2000
+            )
+                msg = response.choices[0].message
+                # compound-mini may return answer in content or reasoning
+                answer = msg.content or ''
+                if not answer:
+                    answer = getattr(msg, 'reasoning', '') or ''
+                if not answer:
+                    raise Exception("Empty response from compound-mini")
                 # Stream it word by word for consistent UI experience
                 words = answer.split(' ')
                 for i, word in enumerate(words):
