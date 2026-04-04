@@ -21,7 +21,7 @@ token_stats = {
 MODELS = {
     "llama-3.3-70b-versatile":                  {"limit": 100000, "label": "70B (High Quality)"},
     "llama-3.1-8b-instant":                     {"limit": 500000, "label": "8B (Fast)"},
-    "meta-llama/llama-4-scout-17b-16e-instruct": {"limit": 100000, "label": "Llama 4 Scout (Math)"},
+    "meta-llama/llama-4-scout-17b-16e-instruct": {"limit": 100000, "label": "Llama 4 Scout"},
 }
 
 def download_database():
