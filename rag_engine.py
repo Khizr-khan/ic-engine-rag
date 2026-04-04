@@ -557,7 +557,11 @@ Problem: {question}"""
                         yield word
                 return
             except Exception as e:
-                yield f"⚠️ Compound model error: {str(e)}. Falling back to standard model...\n\n"
+                if "429" in str(e):
+                    # Compound rate limited — silently fall through to Llama 4 Scout
+                    pass
+                else:
+                    yield f"⚠️ Error: {str(e)}. Retrying...\n\n"
                 # Fall through to standard RAG pipeline
 
         # ── Standard RAG pipeline for conceptual questions ──
