@@ -356,12 +356,21 @@ class RAGEngine:
     def ask(self, question: str, top_k: int = 6, history: list = []) -> dict:
         question = self.enhance_question(question)
 
-        retriever = self.vectorstore.as_retriever(
-            search_type="similarity",
-            search_kwargs={"k": top_k}
-        )
+# For numerical problems — skip retrieval, use prompt formulas only
+        numerical_keywords = ["calculate", "find", "determine", "compute",
+                            "bore", "stroke", "rpm", "kpa", "kw", "efficiency"]
+        is_numerical = sum(1 for kw in numerical_keywords if kw in question.lower()) >= 3
 
-        docs = retriever.invoke(question)
+        if is_numerical:
+            docs = []
+            context = "Use the formulas provided in your instructions to solve this numerical problem step by step."
+        else:
+            retriever = self.vectorstore.as_retriever(
+                search_type="mmr",
+                search_kwargs={"k": top_k, "fetch_k": 20}
+            )
+            docs = retriever.invoke(question)
+            context = "\n\n".join(d.page_content for d in docs) if docs else "No context found."
 
         if not docs:
             return {
