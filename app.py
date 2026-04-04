@@ -663,7 +663,7 @@ with st.form("chat_form", clear_on_submit=True):
 st.markdown("""
 <div style="text-align:center;font-size:10px;color:#4b5563;
 font-family:'IBM Plex Mono',monospace;letter-spacing:0.05em;margin-top:4px;">
-CTRL+ENTER TO SEND
+CTRL+ENTER TO SEND &nbsp;|&nbsp; ⚠️ AI can make mistakes — always verify numerical answers
 </div>
 """, unsafe_allow_html=True)
 
