@@ -1,3 +1,12 @@
+---
+title: Ic Engine Rag
+emoji: ⚙️
+colorFrom: green
+colorTo: blue
+sdk: docker
+pinned: false
+---
+
 # ⚙️ IC Engine RAG Study Assistant
 
 An AI-powered study assistant for IC Engine engineering students, built with Retrieval-Augmented Generation (RAG). Answers conceptual and numerical questions directly from the **Ganesan IC Engines textbook**.
