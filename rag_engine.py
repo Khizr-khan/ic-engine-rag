@@ -640,6 +640,16 @@ class RAGEngine:
                 if not answer:
                     print("compound-mini returned empty — falling to Scout")
                     raise Exception("Empty response from compound-mini")
+                import re
+                # Clean LaTeX from compound-mini output
+                answer = re.sub(r'\\\[|\\\]|\\boxed\{([^}]*)\}', r'\1', answer)
+                answer = re.sub(r'\\\(|\\\)', '', answer)
+                answer = re.sub(r'\\begin\{[^}]*\}|\\end\{[^}]*\}', '', answer)
+                answer = re.sub(r'\\frac\{([^}]*)\}\{([^}]*)\}', r'(\1/\2)', answer)
+                answer = re.sub(r'\\text\{([^}]*)\}', r'\1', answer)
+                answer = answer.replace('\\times', '×').replace('\\eta', 'η')
+                answer = re.sub(r'\\[a-zA-Z]+', '', answer)  # remove remaining commands
+                
                 words = answer.split(" ")
                 for i, word in enumerate(words):
                     yield word + (" " if i < len(words) - 1 else "")
