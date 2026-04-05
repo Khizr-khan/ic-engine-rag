@@ -1,6 +1,8 @@
 import os
+import re
 from huggingface_hub import snapshot_download
 from langchain_groq import ChatGroq
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.prompts import PromptTemplate
@@ -19,10 +21,13 @@ token_stats = {
 }
 
 MODELS = {
-    "llama-3.3-70b-versatile":                  {"limit": 100000, "label": "70B (High Quality)"},
-    "llama-3.1-8b-instant":                     {"limit": 500000, "label": "8B (Fast)"},
-    "meta-llama/llama-4-scout-17b-16e-instruct": {"limit": 100000, "label": "Llama 4 Scout"},
+    "llama-3.3-70b-versatile":                   {"limit": 100000,  "label": "70B — High Quality", "provider": "groq"},
+    "llama-3.1-8b-instant":                      {"limit": 500000,  "label": "8B — Fast",          "provider": "groq"},
+    "meta-llama/llama-4-scout-17b-16e-instruct": {"limit": 100000,  "label": "Llama 4 Scout",      "provider": "groq"},
+    "gemma-4-31b":                               {"limit": 1000000, "label": "Gemma 4 (Free)",     "provider": "google"},
 }
+
+GOOGLE_MODELS = {"gemma-4-31b"}
 
 def download_database():
     if not os.path.exists(CHROMA_DIR) or not os.listdir(CHROMA_DIR):
@@ -239,6 +244,44 @@ Student Question:
 YOUR RESPONSE:
 ═══════════════════════════════════════════════"""
 
+# ─────────────────────────────────────────────────────────────
+# Shared numerical prompt builder — used by both compound-mini
+# and Scout so both get identical instructions
+# ─────────────────────────────────────────────────────────────
+NUMERICAL_SYSTEM_PROMPT = """You are an IC Engine professor. Solve the numerical problem step by step.
+
+CRITICAL RULES:
+- A = π/4 × d²  — keep ALL decimal places, do NOT round A early
+- ip  = imep × L × A × (N/2) × K / 60   (kW)
+- bp  = bmep × L × A × (N/2) × K / 60   (kW)
+- fp  = ip - bp
+- η_mech = bp / ip
+- /60 is MANDATORY — converts per-minute to per-second
+- WITHOUT /60 the answer will be 60× too large
+
+EXPONENT VALUES (use exactly):
+  Otto/Diesel (γ-1 = 0.4):  8^0.4=2.297, 9^0.4=2.408, 10^0.4=2.512, 16^0.4=3.031, 18^0.4=3.178
+  Diesel cutoff (rc^1.4):   2^1.4=2.639, 2.2^1.4=3.016, 2.5^1.4=3.607, 3^1.4=4.656
+  Brayton ((γ-1)/γ=0.2857): 4^0.2857=1.486, 6^0.2857=1.669, 8^0.2857=1.811, 10^0.2857=1.931
+
+DIESEL RULES:
+  Q_in = Cp × (T3 - T2)   where Cp = γ × Cv  (constant pressure — use Cp NOT Cv)
+  Q_out = Cv × (T4 - T1)
+  T4 = T3 × (rc/r)^(γ-1)  — NOT T3 × (1/r)^(γ-1)
+
+BRAYTON RULES:
+  Exponent = (γ-1)/γ = 0.2857  — NEVER use 0.4 for Brayton
+  T2 = T1 × rp^0.2857
+  T4 = T3 / rp^0.2857
+
+VERIFICATION (mandatory):
+  1. T2 > T1 always
+  2. 0 < η_th < 1
+  3. bp < ip always
+  4. η_th = W_net / Q_in must match formula result
+"""
+
+
 class RAGEngine:
     def __init__(self):
         self.embeddings = HuggingFaceEmbeddings(
@@ -253,13 +296,30 @@ class RAGEngine:
             model=self.current_model,
             temperature=0
         )
+        self.google_llm = ChatGoogleGenerativeAI(
+            model="gemma-4-31b",
+            google_api_key=os.getenv("GOOGLE_API_KEY"),
+            temperature=0
+        )
         self.prompt = PromptTemplate.from_template(PROMPT_TEMPLATE)
 
+    # ─────────────────────────────────────────────────────────
+    # Model switching
+    # ─────────────────────────────────────────────────────────
+    def _make_llm(self, model_name: str):
+        """Instantiate the correct LLM class based on provider."""
+        if model_name in GOOGLE_MODELS:
+            return ChatGoogleGenerativeAI(
+                model=model_name,
+                google_api_key=os.getenv("GOOGLE_API_KEY"),
+                temperature=0
+            )
+        return ChatGroq(model=model_name, temperature=0)
+
     def switch_model(self, model_name: str):
-        """Switch to a different model"""
         if model_name in MODELS:
             self.current_model = model_name
-            self.llm = ChatGroq(model=model_name, temperature=0)
+            self.llm = self._make_llm(model_name)
             token_stats["model"] = model_name
             token_stats["used"] = 0
             print(f"Switched to model: {model_name}")
@@ -274,36 +334,19 @@ class RAGEngine:
             "percent_used": round(token_stats["used"] / MODELS[self.current_model]["limit"] * 100, 1)
         }
 
+    # ─────────────────────────────────────────────────────────
+    # Question enhancement
+    # ─────────────────────────────────────────────────────────
     def enhance_question(self, question: str, history: list = []) -> str:
         question = question.strip()
 
-        short_keywords = ["only", "just", "briefly"]
         formula_keywords = ["formula", "equation", "expression"]
-        explain_keywords = ["explain", "elaborate", "more detail", "tell me more", "in detail"]
+        short_keywords   = ["only", "just", "briefly"]
 
-        # If asking for formula without specifying topic — get topic from history
-        # If asking for formula without specifying topic — get topic from history
-# But NOT if asking about meaning/explanation of formula
         if any(kw in question.lower() for kw in formula_keywords):
             if "meaning" in question.lower() or "explain" in question.lower():
-        # Student wants explanation — don't treat as formula request
-                pass
-            elif history:
-                last_user_msg = ""
-                for msg in reversed(history):
-                     if msg["role"] == "user":
-                         last_user_msg = msg["content"]
-                         break
-                if last_user_msg:
-                    return f"formula for {last_user_msg}"
-
-# If asking for formula without specifying topic — get topic from history
-        if any(kw in question.lower() for kw in formula_keywords):
-            if "meaning" in question.lower() or "explain" in question.lower():
-                pass
+                pass  # student wants explanation, not the formula itself
             else:
-                # Check if question already has a topic specified
-                # e.g. "formula for thermal efficiency" already has topic
                 ic_topics = [
                     "thermal efficiency", "compression ratio", "volumetric efficiency",
                     "brake power", "indicated power", "bmep", "imep", "turbocharger",
@@ -320,57 +363,136 @@ class RAGEngine:
                         return f"formula for {last_user_msg}"
             return question
 
-        # Short answer — return as is
         if any(kw in question.lower() for kw in short_keywords):
             return question
 
-        # Check if proper question
         question_words = [
             "what", "how", "why", "when", "where",
             "which", "explain", "describe", "define",
             "draw", "show", "sketch", "diagram"
         ]
-        is_proper_question = any(
-            question.lower().startswith(w) for w in question_words
-        ) or question.endswith("?")
+        is_proper = any(question.lower().startswith(w) for w in question_words) or question.endswith("?")
 
-        if not is_proper_question:
+        if not is_proper:
             return f"Explain {question} in detail"
         return question
-    
+
+    # ─────────────────────────────────────────────────────────
+    # Numerical question detection
+    # ─────────────────────────────────────────────────────────
+    def is_numerical_question(self, question: str) -> bool:
+        numerical_keywords = [
+            "calculate", "find", "determine", "compute",
+            "bore", "stroke", "rpm", "kpa", "kw",
+            "efficiency", "pressure", "temperature", "power",
+            "volume", "cylinder", "piston", "ratio"
+        ]
+        count = sum(1 for kw in numerical_keywords if kw in question.lower())
+        has_numbers = bool(re.search(r'\d+\s*(mm|kpa|rpm|kw|kj|kg|bar|cc|m)', question.lower()))
+        return count >= 3 or (count >= 2 and has_numbers)
+
+    # ─────────────────────────────────────────────────────────
+    # Smart RAG routing
+    # Performance questions (bp/ip/fp/VS) → skip RAG
+    # Thermodynamic cycles → keep RAG
+    # ─────────────────────────────────────────────────────────
+    def needs_rag(self, question: str) -> bool:
+        q = question.lower()
+
+        # Engine performance calculations — formulas are in the prompt, RAG adds noise
+        performance_keywords = [
+            "brake power", "indicated power", "friction power",
+            "bp", "ip", "fp", "bmep", "imep", "fmep",
+            "swept volume", "displacement", "volumetric efficiency",
+            "bsfc", "mechanical efficiency", "η_mech"
+        ]
+        if any(kw in q for kw in performance_keywords):
+            return False   # skip RAG — use prompt formulas only
+
+        # Thermodynamic cycles — RAG helps with theory and formula context
+        cycle_keywords = [
+            "otto", "diesel", "brayton", "carnot", "cycle",
+            "thermal efficiency", "heat addition", "compression ratio",
+            "cutoff ratio", "pressure ratio", "t1", "t2", "t3", "t4"
+        ]
+        if any(kw in q for kw in cycle_keywords):
+            return True    # keep RAG
+
+        # Default: use RAG for conceptual questions
+        return True
+
+    # ─────────────────────────────────────────────────────────
+    # Build the full numerical prompt (shared by all models)
+    # ─────────────────────────────────────────────────────────
+    def _build_numerical_prompt(self, question: str) -> str:
+        return f"{NUMERICAL_SYSTEM_PROMPT}\nProblem: {question}"
+
+    # ─────────────────────────────────────────────────────────
+    # Stream answer from Scout for numerical questions
+    # ─────────────────────────────────────────────────────────
+    def _stream_scout_numerical(self, question: str):
+        """Use Llama 4 Scout with full numerical prompt — yields chunks."""
+        scout = ChatGroq(
+            model="meta-llama/llama-4-scout-17b-16e-instruct",
+            temperature=0
+        )
+        full_prompt = self._build_numerical_prompt(question)
+        try:
+            for chunk in scout.stream(full_prompt):
+                yield chunk.content
+        except Exception as e:
+            if "429" in str(e) or "rate_limit" in str(e).lower():
+                fallback = ChatGroq(model="llama-3.1-8b-instant", temperature=0)
+                try:
+                    for chunk in fallback.stream(full_prompt):
+                        yield chunk.content
+                except Exception:
+                    yield "All models are currently unavailable. Please try again later."
+            else:
+                yield "An error occurred. Please try again."
+
+    # ─────────────────────────────────────────────────────────
+    # Non-streaming ask (used by /ask endpoint)
+    # ─────────────────────────────────────────────────────────
     def ask(self, question: str, top_k: int = 6, history: list = []) -> dict:
-        question = self.enhance_question(question)
+        question = self.enhance_question(question, history)
 
-# For numerical problems — skip retrieval, use prompt formulas only
-        numerical_keywords = ["calculate", "find", "determine", "compute",
-                            "bore", "stroke", "rpm", "kpa", "kw", "efficiency"]
-        is_numerical = sum(1 for kw in numerical_keywords if kw in question.lower()) >= 3
-
-        if is_numerical:
-            docs = []
-            context = "Use the formulas provided in your instructions to solve this numerical problem step by step."
-        else:
-            retriever = self.vectorstore.as_retriever(
-                search_type="mmr",
-                search_kwargs={"k": top_k, "fetch_k": 20}
-            )
-            docs = retriever.invoke(question)
-            context = "\n\n".join(d.page_content for d in docs) if docs else "No context found."
-
-        if not docs:
-            return {
-                "answer": "No documents found. Please make sure ingest.py has been run.",
-                "sources": []
-            }
-
-        context = "\n\n".join(d.page_content for d in docs)
-
-        # Build history string from last 4 messages
+        # Build history string
         history_text = ""
         if history:
             for msg in history[-4:]:
                 role = "Student" if msg["role"] == "user" else "Professor"
                 history_text += f"{role}: {msg['content']}\n"
+
+        is_numerical = self.is_numerical_question(question)
+
+        if is_numerical:
+            # Use Scout with full numerical prompt — no RAG needed
+            full_prompt = self._build_numerical_prompt(question)
+            scout = ChatGroq(
+                model="meta-llama/llama-4-scout-17b-16e-instruct",
+                temperature=0
+            )
+            try:
+                answer = scout.invoke(full_prompt).content
+            except Exception:
+                fallback = ChatGroq(model="llama-3.1-8b-instant", temperature=0)
+                answer = fallback.invoke(full_prompt).content
+            return {"answer": answer, "sources": []}
+
+        # Conceptual question — use RAG
+        use_rag = self.needs_rag(question)
+        if use_rag:
+            retriever = self.vectorstore.as_retriever(
+                search_type="mmr",
+                search_kwargs={"k": top_k, "fetch_k": 20}
+            )
+            docs = retriever.invoke(question)
+        else:
+            docs = []
+
+        context = "\n\n".join(d.page_content for d in docs) if docs else \
+                  "Use the formulas provided in your instructions to solve this problem."
 
         prompt_value = self.prompt.format(
             context=context,
@@ -382,9 +504,7 @@ class RAGEngine:
         seen = set()
         sources = []
         for doc in docs:
-            filename = os.path.basename(
-                doc.metadata.get("source", "unknown")
-            )
+            filename = os.path.basename(doc.metadata.get("source", "unknown"))
             page = doc.metadata.get("page", 0)
             key = f"{filename}_{page}"
             if key not in seen:
@@ -396,21 +516,131 @@ class RAGEngine:
                 })
 
         return {"answer": answer, "sources": sources}
+
+    # ─────────────────────────────────────────────────────────
+    # Streaming ask (used by /ask-stream endpoint)
+    # ─────────────────────────────────────────────────────────
+    def ask_stream(self, question: str, top_k: int = 10, history: list = []):
+        """Generator that yields answer chunks as they arrive."""
+        question = self.enhance_question(question, history)
+
+        # ── Numerical question path ──────────────────────────
+        if self.is_numerical_question(question):
+
+            # Step 1: try compound-mini
+            compound_success = False
+            try:
+                from groq import Groq as GroqClient
+                client = GroqClient(api_key=os.getenv("GROQ_API_KEY"))
+                numerical_prompt = self._build_numerical_prompt(question)
+
+                response = client.chat.completions.create(
+                    model="groq/compound-mini",
+                    messages=[{"role": "user", "content": numerical_prompt}],
+                    max_tokens=2000
+                )
+                msg = response.choices[0].message
+                answer = msg.content or ""
+                if not answer:
+                    answer = getattr(msg, "reasoning", "") or ""
+                if not answer:
+                    raise Exception("Empty response from compound-mini")
+
+                # Stream word by word for consistent UI
+                words = answer.split(" ")
+                for i, word in enumerate(words):
+                    yield word + (" " if i < len(words) - 1 else "")
+                compound_success = True
+
+            except Exception:
+                pass  # silently fall through to Scout
+
+            # Step 2: if compound-mini failed for any reason → Scout with full prompt
+            if not compound_success:
+                yield from self._stream_scout_numerical(question)
+
+            return  # numerical path done — do NOT fall into RAG pipeline
+
+        # ── Conceptual question path (RAG) ───────────────────
+        use_rag = self.needs_rag(question)
+        if use_rag:
+            retriever = self.vectorstore.as_retriever(
+                search_type="mmr",
+                search_kwargs={"k": top_k, "fetch_k": 20}
+            )
+            docs = retriever.invoke(question)
+        else:
+            docs = []
+
+        if use_rag and not docs:
+            yield "No documents found in the database."
+            return
+
+        context = "\n\n".join(d.page_content for d in docs) if docs else \
+                  "Use the formulas provided in your instructions to solve this problem."
+
+        history_text = ""
+        if history:
+            for msg in history[-4:]:
+                role = "Student" if msg["role"] == "user" else "Professor"
+                history_text += f"{role}: {msg['content']}\n"
+
+        prompt_value = self.prompt.format(
+            context=context,
+            question=question,
+            history=history_text
+        )
+
+        # Stream with auto model switching on rate limit
+        try:
+            total_chars = 0
+            for chunk in self.llm.stream(prompt_value):
+                content = chunk.content
+                total_chars += len(content)
+                yield content
+            # Rough token estimate (4 chars ≈ 1 token)
+            token_stats["used"] += len(prompt_value) // 4 + total_chars // 4
+
+        except Exception as e:
+            if "429" in str(e) or "rate_limit" in str(e).lower():
+                if self.current_model == "llama-3.3-70b-versatile":
+                    print("Rate limit hit — switching to Llama 4 Scout automatically")
+                    self.switch_model("meta-llama/llama-4-scout-17b-16e-instruct")
+                    try:
+                        for chunk in self.llm.stream(prompt_value):
+                            yield chunk.content
+                    except Exception as e2:
+                        if "429" in str(e2) or "rate_limit" in str(e2).lower():
+                            self.switch_model("llama-3.1-8b-instant")
+                            try:
+                                for chunk in self.llm.stream(prompt_value):
+                                    yield chunk.content
+                            except Exception:
+                                yield "All models are currently unavailable. Please try again later."
+                        else:
+                            yield "An error occurred. Please try again."
+
+                elif self.current_model == "meta-llama/llama-4-scout-17b-16e-instruct":
+                    print("Rate limit hit — switching to 8B model automatically")
+                    self.switch_model("llama-3.1-8b-instant")
+                    try:
+                        for chunk in self.llm.stream(prompt_value):
+                            yield chunk.content
+                    except Exception:
+                        yield "All models are currently unavailable. Please try again later."
+                else:
+                    yield "All models are currently unavailable. Please try again later."
+            else:
+                yield "An error occurred. Please try again."
+
+    # ─────────────────────────────────────────────────────────
+    # Quiz generation
+    # ─────────────────────────────────────────────────────────
     def generate_quiz(self, topic: str, num_questions: int = 5) -> list:
-        """Generate quiz questions from course material"""
         docs = self.vectorstore.similarity_search(topic, k=20)
         context = "\n\n".join(d.page_content for d in docs)
 
-        # Use higher temperature for more creative and varied quiz questions
-        # quiz_llm = ChatGroq(
-        #     model="llama-3.3-70b-versatile",
-        #     temperature=0.4
-        # )
-
-        quiz_llm = ChatGroq(
-        model=self.current_model,
-        temperature=0.4
-        )
+        quiz_llm = ChatGroq(model=self.current_model, temperature=0.4)
         quiz_prompt = f"""You are an IC Engine professor creating a quiz.
         Based on the context below, generate exactly {num_questions} multiple choice questions about {topic}.
 
@@ -445,7 +675,6 @@ class RAGEngine:
         return self.parse_quiz(response)
 
     def parse_quiz(self, raw: str) -> list:
-        """Parse raw quiz text into structured questions"""
         questions = []
         blocks = raw.strip().split("@@@")
         for block in blocks:
@@ -473,12 +702,10 @@ class RAGEngine:
         return questions
 
     def check_answer(self, question: dict, student_answer: str) -> dict:
-        """Check if student answer is correct"""
         correct = question["answer"].upper().strip()
         given = student_answer.upper().strip()
-        is_correct = given == correct
         return {
-            "correct": is_correct,
+            "correct": given == correct,
             "given": given,
             "correct_answer": correct,
             "explanation": question["explanation"]
@@ -486,152 +713,6 @@ class RAGEngine:
 
     def get_doc_count(self) -> int:
         return self.vectorstore._collection.count()
-    
-    
-
-    def is_numerical_question(self, question: str) -> bool:
-        """Detect if question is a numerical problem requiring calculation"""
-        numerical_keywords = [
-            "calculate", "find", "determine", "compute",
-            "bore", "stroke", "rpm", "kpa", "kw",
-            "efficiency", "pressure", "temperature", "power",
-            "volume", "cylinder", "piston", "ratio"
-        ]
-        count = sum(1 for kw in numerical_keywords if kw in question.lower())
-        # Also check if question has numbers with units
-        import re
-        has_numbers = bool(re.search(r'\d+\s*(mm|kpa|rpm|kw|kj|kg|bar|cc|m)', question.lower()))
-        return count >= 3 or (count >= 2 and has_numbers)
-
-    def ask_stream(self, question: str, top_k: int = 10, history: list = []):
-        """Generator that yields answer chunks as they arrive"""
-        question = self.enhance_question(question, history)
-
-        # ── Numerical question → use compound-mini with code execution ──
-        if self.is_numerical_question(question):
-            try:
-                from groq import Groq as GroqClient
-                client = GroqClient(api_key=os.getenv("GROQ_API_KEY"))
-                yield "🔢 Running calculations...\n\n"
-
-                numerical_prompt = f"""You are an IC Engine professor.
-                Solve this numerical problem step by step.
-
-                CRITICAL RULES:
-                - A = π/4 × d² — keep ALL decimal places, do NOT round A
-                - bp = bmep × L × A × (N/2) × K / 60
-                - ip = bp / η_mech
-                - fp = ip - bp
-                - For 4-stroke: use N/2 for power strokes per minute, then divide by 60
-                - 9^0.4=2.408, 10^0.4=2.512, 16^0.4=3.031, 18^0.4=3.178
-                - 8^0.4=2.297, 8.5^0.4=2.354, 2.2^1.4=3.016, 2.5^1.4=3.607
-
-                Problem: {question}"""
-                response = client.chat.completions.create(
-                model="groq/compound-mini",
-                messages=[{"role": "user", "content": numerical_prompt}],
-                max_tokens=2000
-            )
-                msg = response.choices[0].message
-                # compound-mini may return answer in content or reasoning
-                answer = msg.content or ''
-                if not answer:
-                    answer = getattr(msg, 'reasoning', '') or ''
-                if not answer:
-                    raise Exception("Empty response from compound-mini")
-                # Stream it word by word for consistent UI experience
-                words = answer.split(' ')
-                for i, word in enumerate(words):
-                    if i < len(words) - 1:
-                        yield word + ' '
-                    else:
-                        yield word
-                return
-            except Exception as e:
-                if "429" in str(e):
-                    # Compound rate limited → go directly to Scout
-                    scout = ChatGroq(
-                        model="meta-llama/llama-4-scout-17b-16e-instruct",
-                        temperature=0
-                    )
-                    try:
-                        for chunk in scout.stream(question):
-                            yield chunk.content
-                    except Exception:
-                        pass
-                    return
-                else:
-                    yield f"⚠️ Error: {str(e)}. Retrying...\n\n"
-                # Fall through to standard RAG pipeline
-
-        # ── Standard RAG pipeline for conceptual questions ──
-        retriever = self.vectorstore.as_retriever(
-            search_type="mmr",
-            search_kwargs={"k": top_k, "fetch_k": 20}
-        )
-        docs = retriever.invoke(question)
-
-        if not docs:
-            yield "No documents found in the database."
-            return
-
-        context = "\n\n".join(d.page_content for d in docs)
-
-        history_text = ""
-        if history:
-            for msg in history[-4:]:
-                role = "Student" if msg["role"] == "user" else "Professor"
-                history_text += f"{role}: {msg['content']}\n"
-
-        prompt_value = self.prompt.format(
-            context=context,
-            question=question,
-            history=history_text
-        )
-
-        # Stream the response with auto model switching
-        try:
-            total_chars = 0
-            for chunk in self.llm.stream(prompt_value):
-                content = chunk.content
-                total_chars += len(content)
-                yield content
-            # Estimate tokens (rough: 4 chars per token)
-            token_stats["used"] += len(prompt_value) // 4 + total_chars // 4
-
-        except Exception as e:
-            if "429" in str(e) or "rate_limit" in str(e).lower():
-                if self.current_model == "llama-3.3-70b-versatile":
-                    print("Rate limit hit — switching to Llama 4 Scout automatically")
-                    self.switch_model("meta-llama/llama-4-scout-17b-16e-instruct")
-                    yield "\n\n⚠️ Switched to Llama 4 Scout due to rate limit. Retrying...\n\n"
-                    try:
-                        for chunk in self.llm.stream(prompt_value):
-                            yield chunk.content
-                    except Exception as e2:
-                        if "429" in str(e2):
-                            self.switch_model("llama-3.1-8b-instant")
-                            yield "\n\n⚠️ Switched to 8B model. Retrying...\n\n"
-                            try:
-                                for chunk in self.llm.stream(prompt_value):
-                                    yield chunk.content
-                            except Exception as e3:
-                                yield "⚠️ All models rate limited. Please try again tomorrow."
-                        else:
-                            yield f"⚠️ An error occurred: {str(e2)}"
-                elif self.current_model == "meta-llama/llama-4-scout-17b-16e-instruct":
-                    print("Rate limit hit — switching to 8b model automatically")
-                    self.switch_model("llama-3.1-8b-instant")
-                    yield "\n\n⚠️ Switched to 8B model due to rate limit. Retrying...\n\n"
-                    try:
-                        for chunk in self.llm.stream(prompt_value):
-                            yield chunk.content
-                    except Exception as e2:
-                        yield "⚠️ All models rate limited. Please try again tomorrow."
-                else:
-                    yield "⚠️ Daily limit reached on all models. Please try again tomorrow."
-            else:
-                yield f"⚠️ An error occurred: {str(e)}"
 
 
 rag = RAGEngine()
