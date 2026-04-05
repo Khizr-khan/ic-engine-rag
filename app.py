@@ -98,15 +98,23 @@ st.markdown("""
     border-radius: 8px; margin: 4px 0;
 }
 
-.stTextInput > div > div > input,
+.stTextInput > div > div > input {
+    background: rgba(14,18,14,0.85) !important;
+    border: 1px solid rgba(74,222,128,0.2) !important;
+    border-radius: 12px !important; color: #e8e6df !important;
+    font-family: 'IBM Plex Mono', monospace !important;
+    font-size: 14px !important; padding: 12px 15px !important;
+}
 .stTextArea > div > div > textarea {
     background: rgba(14,18,14,0.85) !important;
     border: 1px solid rgba(74,222,128,0.2) !important;
     border-radius: 12px !important; color: #e8e6df !important;
     font-family: 'IBM Plex Mono', monospace !important;
     font-size: 14px !important; padding: 12px 15px !important;
-    resize: none !important;
-    min-height: 80px !important;
+    resize: vertical !important;
+    min-height: 52px !important;
+    max-height: 300px !important;
+    overflow-y: auto !important;
 }
 .stTextInput > div > div > input:focus,
 .stTextArea > div > div > textarea:focus {
@@ -650,6 +658,28 @@ if st.session_state.suggested:
 # ── Input area ────────────────────────────────────────────────────────────────
 st.markdown("<hr>", unsafe_allow_html=True)
 
+st.markdown("""
+<script>
+(function() {
+    function autoGrow() {
+        var textareas = window.parent.document.querySelectorAll('.stTextArea textarea');
+        textareas.forEach(function(ta) {
+            if (!ta.dataset.autoGrow) {
+                ta.dataset.autoGrow = 'true';
+                ta.addEventListener('input', function() {
+                    this.style.height = 'auto';
+                    this.style.height = Math.min(this.scrollHeight, 300) + 'px';
+                });
+            }
+        });
+    }
+    setTimeout(autoGrow, 600);
+    setTimeout(autoGrow, 1500);
+    setTimeout(autoGrow, 3000);
+})();
+</script>
+""", unsafe_allow_html=True)
+
 with st.form("chat_form", clear_on_submit=True):
     col1, col2 = st.columns([5, 1])
     with col1:
@@ -657,7 +687,7 @@ with st.form("chat_form", clear_on_submit=True):
             label="question",
             placeholder="Ask a question or say 'ask me 5 questions on SI engine'...",
             label_visibility="collapsed",
-            height=80,
+            height=None,
             key="input_area"
         )
     with col2:
