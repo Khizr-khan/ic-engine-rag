@@ -399,6 +399,7 @@ def format_subscripts(text: str) -> str:
     text = re.sub(r'η_([A-Za-z0-9]+)', r'η<sub>\1</sub>', text)
     text = re.sub(r'W_([A-Za-z0-9]+)', r'W<sub>\1</sub>', text)
     text = re.sub(r'Q_([A-Za-z0-9]+)', r'Q<sub>\1</sub>', text)
+    text = text.replace('\\pi', 'π')
     return text
 
 def call_api(question: str, history: list = []):
