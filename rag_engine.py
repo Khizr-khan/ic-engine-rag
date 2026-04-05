@@ -274,6 +274,10 @@ BRAYTON RULES:
   Exponent = (γ-1)/γ = 0.2857  — NEVER use 0.4 for Brayton
   T2 = T1 × rp^0.2857
   T4 = T3 / rp^0.2857
+  Q_in  = Cp × (T3 - T2)   — heat added AFTER compression, NOT (T3 - T1)
+  Q_out = Cp × (T4 - T1)
+  η_th  = 1 - 1/rp^0.2857  = W_net / Q_in
+  NEVER use Q_in = Cp × (T3 - T1) — T1 is before compression, T2 is after
 
 VERIFICATION (mandatory):
   1. T2 > T1 always
