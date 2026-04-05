@@ -633,6 +633,7 @@ if st.session_state.suggested:
             st.session_state.messages.pop()
         else:
             placeholder = st.empty()
+            placeholder.markdown('''<div style="display:flex;align-items:center;gap:6px;padding:4px 0"><span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#6b7a6b;">Thinking</span><span style="display:inline-flex;gap:3px"><span style="width:5px;height:5px;border-radius:50%;background:#4ade80;animation:dot-pulse 1.2s infinite;animation-delay:0s"></span><span style="width:5px;height:5px;border-radius:50%;background:#4ade80;animation:dot-pulse 1.2s infinite;animation-delay:0.2s"></span><span style="width:5px;height:5px;border-radius:50%;background:#4ade80;animation:dot-pulse 1.2s infinite;animation-delay:0.4s"></span></span></div><style>@keyframes dot-pulse{0%,80%,100%{opacity:0.2;transform:scale(0.8)}40%{opacity:1;transform:scale(1)}}</style>''', unsafe_allow_html=True)
             full_answer = ""
             try:
                 for chunk in res.iter_content(chunk_size=None, decode_unicode=True):
@@ -741,6 +742,7 @@ if submitted and user_input.strip():
                 st.session_state.messages.pop()
             else:
                 placeholder = st.empty()
+                placeholder.markdown('''<div style="display:flex;align-items:center;gap:6px;padding:4px 0"><span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#6b7a6b;">Thinking</span><span style="display:inline-flex;gap:3px"><span style="width:5px;height:5px;border-radius:50%;background:#4ade80;animation:dot-pulse 1.2s infinite;animation-delay:0s"></span><span style="width:5px;height:5px;border-radius:50%;background:#4ade80;animation:dot-pulse 1.2s infinite;animation-delay:0.2s"></span><span style="width:5px;height:5px;border-radius:50%;background:#4ade80;animation:dot-pulse 1.2s infinite;animation-delay:0.4s"></span></span></div><style>@keyframes dot-pulse{0%,80%,100%{opacity:0.2;transform:scale(0.8)}40%{opacity:1;transform:scale(1)}}</style>''', unsafe_allow_html=True)
                 full_answer = ""
                 try:
                     for chunk in res.iter_content(chunk_size=None, decode_unicode=True):
