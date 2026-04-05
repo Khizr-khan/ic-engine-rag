@@ -433,19 +433,20 @@ class RAGEngine:
     # ─────────────────────────────────────────────────────────
     # Build the full numerical prompt (shared by all models)
     # ─────────────────────────────────────────────────────────
-    def _build_numerical_prompt(self, question: str) -> str:
-        return f"{NUMERICAL_SYSTEM_PROMPT}\nProblem: {question}"
+    def _build_numerical_prompt(self, question: str, context: str = "") -> str:
+        context_block = f"\nRelevant examples from textbook:\n{context}\n" if context else ""
+        return f"{NUMERICAL_SYSTEM_PROMPT}{context_block}\nProblem: {question}"
 
     # ─────────────────────────────────────────────────────────
     # Stream answer from Scout for numerical questions
     # ─────────────────────────────────────────────────────────
-    def _stream_scout_numerical(self, question: str):
+    def _stream_scout_numerical(self, question: str, context: str = ""):
         """Use Llama 4 Scout with full numerical prompt — yields chunks."""
         scout = ChatGroq(
             model="meta-llama/llama-4-scout-17b-16e-instruct",
             temperature=0
         )
-        full_prompt = self._build_numerical_prompt(question)
+        full_prompt = self._build_numerical_prompt(question, context=context)
         try:
             for chunk in scout.stream(full_prompt):
                 yield chunk.content
@@ -535,15 +536,23 @@ class RAGEngine:
         question = self.enhance_question(question, history)
         print(f"[ask_stream] model={self.current_model} | question={question[:60]}")
 
-        # ── Numerical question path ──────────────────────────
+# ── Numerical question path ──────────────────────────
         if self.is_numerical_question(question):
+
+            # Retrieve relevant chunks so model sees worked examples from textbook
+            retriever = self.vectorstore.as_retriever(
+                search_type="mmr",
+                search_kwargs={"k": 6, "fetch_k": 20}
+            )
+            num_docs = retriever.invoke(question)
+            num_context = "\n\n".join(d.page_content for d in num_docs) if num_docs else ""
 
             # Step 1: try compound-mini
             compound_success = False
             try:
                 from groq import Groq as GroqClient
                 client = GroqClient(api_key=os.getenv("GROQ_API_KEY"))
-                numerical_prompt = self._build_numerical_prompt(question)
+                numerical_prompt = self._build_numerical_prompt(question, context=num_context)
 
                 response = client.chat.completions.create(
                     model="groq/compound-mini",
@@ -568,7 +577,7 @@ class RAGEngine:
 
             # Step 2: if compound-mini failed for any reason → Scout with full prompt
             if not compound_success:
-                yield from self._stream_scout_numerical(question)
+                yield from self._stream_scout_numerical(question, context=num_context)
 
             return  # numerical path done — do NOT fall into RAG pipeline
 
