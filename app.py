@@ -302,17 +302,15 @@ with col_header:
 with col_model:
     st.markdown("<div style='padding-top:14px'>", unsafe_allow_html=True)
     current_model = stats["model"] if stats else "llama-3.3-70b-versatile"
-    selected = MODEL_OPTIONS = [
+    MODEL_OPTIONS = [
         "llama-3.3-70b-versatile",
         "llama-3.1-8b-instant",
         "meta-llama/llama-4-scout-17b-16e-instruct",
-        "gemma-4-31b",
     ]
     MODEL_LABELS = {
         "llama-3.3-70b-versatile":                   "70B — High Quality",
         "llama-3.1-8b-instant":                      "8B — Fast",
         "meta-llama/llama-4-scout-17b-16e-instruct": "Llama 4 Scout",
-        "gemma-4-31b":                               "Gemma 4 (Free)",
     }
     current_index = MODEL_OPTIONS.index(current_model) if current_model in MODEL_OPTIONS else 0
     selected = st.selectbox(
