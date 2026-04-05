@@ -525,7 +525,9 @@ class RAGEngine:
     # ─────────────────────────────────────────────────────────
     def ask_stream(self, question: str, top_k: int = 10, history: list = []):
         """Generator that yields answer chunks as they arrive."""
+        
         question = self.enhance_question(question, history)
+        print(f"[ask_stream] model={self.current_model} | question={question[:60]}")
 
         # ── Numerical question path ──────────────────────────
         if self.is_numerical_question(question):
@@ -641,8 +643,8 @@ class RAGEngine:
                 else:
                     yield "All models are currently unavailable. Please try again later."
             else:
-                print(f"Streaming error: {str(e)}")
-                yield "An error occurred. Please try again."
+                print(f"Streaming error | model={self.current_model} | error={str(e)}")
+                yield f"Error: {str(e)}"
     # ─────────────────────────────────────────────────────────
     # Quiz generation
     # ─────────────────────────────────────────────────────────
