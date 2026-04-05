@@ -16,3 +16,4 @@ pydantic
 streamlit
 requests
 huggingface_hub
+langchain-google-genai
