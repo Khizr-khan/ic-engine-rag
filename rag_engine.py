@@ -41,7 +41,6 @@ def download_database():
 download_database()
 
 PROMPT_TEMPLATE = """You are an expert IC Engine professor at a top engineering university. You have deep knowledge of internal combustion engines and teach with clarity, precision, and pedagogical excellence. Your answers come ONLY from the context provided below.
-IMPORTANT: The TYPE labels below are YOUR internal instructions only. NEVER write them in your response. Start your answer directly.
 
 ═══════════════════════════════════════════════════════
 RESPONSE TYPE DETECTION — read question carefully first
@@ -108,6 +107,8 @@ CRITICAL REMINDERS:
   • /60 is MANDATORY in power formulas — converts per minute to per second
   • Diesel Q_in uses Cp = γ × Cv (constant pressure), NOT Cv
   • Diesel T_4 = T_3 × (rc/r)^(γ-1) — NOT T_3 × (1/r)^(γ-1)
+    Example: rc=2, r=14 → T4 = T3 × (2/14)^0.4
+    NEVER use (V3/V4) = 1/r — that ignores the cutoff ratio
   • Brayton cycle exponent is (γ-1)/γ = 0.2857, NOT γ-1 = 0.4
     T_2 = T_1 × rp^0.2857  where rp = pressure ratio
     T_4 = T_3 / rp^0.2857
@@ -240,6 +241,47 @@ Student Question:
 ═══════════════════════════════════════════════
 YOUR RESPONSE:
 ═══════════════════════════════════════════════"""
+
+# ─────────────────────────────────────────────────────────────
+# Shared numerical prompt builder
+# ─────────────────────────────────────────────────────────────
+NUMERICAL_SYSTEM_PROMPT = """You are an IC Engine professor. Solve the numerical problem step by step.
+
+CRITICAL RULES:
+- A = π/4 × d²  — keep ALL decimal places, do NOT round A early
+- ip  = imep × L × A × (N/2) × K / 60   (kW)
+- bp  = bmep × L × A × (N/2) × K / 60   (kW)
+- fp  = ip - bp
+- η_mech = bp / ip
+- /60 is MANDATORY — converts per-minute to per-second
+- WITHOUT /60 the answer will be 60× too large
+- Keep imep/bmep in kPa — do NOT convert to Pa
+
+EXPONENT VALUES (use exactly):
+  Otto/Diesel (γ-1 = 0.4):  8^0.4=2.297, 9^0.4=2.408, 10^0.4=2.512, 16^0.4=3.031, 18^0.4=3.178
+  CRITICAL: 16^0.4=3.031 and 18^0.4=3.178 are DIFFERENT — never mix them up
+  Diesel cutoff (rc^1.4):   2^1.4=2.639, 2.2^1.4=3.016, 2.5^1.4=3.607, 3^1.4=4.656
+  Brayton ((γ-1)/γ=0.2857): 4^0.2857=1.486, 6^0.2857=1.669, 8^0.2857=1.811, 10^0.2857=1.931
+
+DIESEL RULES:
+  Q_in = Cp × (T3 - T2)   where Cp = γ × Cv  (constant pressure — use Cp NOT Cv)
+  Q_out = Cv × (T4 - T1)
+  T4 = T3 × (rc/r)^(γ-1)  — NOT T3 × (1/r)^(γ-1)
+  Example: rc=2, r=14 → T4 = T3 × (2/14)^0.4 = T3 × (0.1429)^0.4
+  NEVER use (V3/V4) = 1/r — that ignores the cutoff ratio
+
+BRAYTON RULES:
+  Exponent = (γ-1)/γ = 0.2857  — NEVER use 0.4 for Brayton
+  T2 = T1 × rp^0.2857
+  T4 = T3 / rp^0.2857
+
+VERIFICATION (mandatory):
+  1. T2 > T1 always
+  2. 0 < η_th < 1
+  3. bp < ip always
+  4. η_th = W_net / Q_in must match formula result
+"""
+
 
 class RAGEngine:
     def __init__(self):
@@ -492,6 +534,51 @@ class RAGEngine:
     
     
 
+
+    # ─────────────────────────────────────────────────────────
+    # Smart RAG routing
+    # ─────────────────────────────────────────────────────────
+    def needs_rag(self, question: str) -> bool:
+        q = question.lower()
+        performance_keywords = [
+            "brake power", "indicated power", "friction power",
+            "bp", "ip", "fp", "bmep", "imep", "fmep",
+            "swept volume", "displacement", "volumetric efficiency",
+            "bsfc", "mechanical efficiency", "η_mech"
+        ]
+        if any(kw in q for kw in performance_keywords):
+            return False
+        cycle_keywords = [
+            "otto", "diesel", "brayton", "carnot", "cycle",
+            "thermal efficiency", "heat addition", "compression ratio",
+            "cutoff ratio", "pressure ratio", "t1", "t2", "t3", "t4"
+        ]
+        if any(kw in q for kw in cycle_keywords):
+            return True
+        return True
+
+    def _build_numerical_prompt(self, question: str, context: str = "") -> str:
+        context_block = f"\nRelevant examples from textbook:\n{context}\n" if context else ""
+        return f"{NUMERICAL_SYSTEM_PROMPT}{context_block}\nProblem: {question}"
+
+    def _stream_scout_numerical(self, question: str, context: str = ""):
+        """Use Llama 4 Scout with full numerical prompt — yields chunks."""
+        scout = ChatGroq(model="meta-llama/llama-4-scout-17b-16e-instruct", temperature=0)
+        full_prompt = self._build_numerical_prompt(question, context=context)
+        try:
+            for chunk in scout.stream(full_prompt):
+                yield chunk.content
+        except Exception as e:
+            if "429" in str(e) or "rate_limit" in str(e).lower():
+                fallback = ChatGroq(model="llama-3.1-8b-instant", temperature=0)
+                try:
+                    for chunk in fallback.stream(full_prompt):
+                        yield chunk.content
+                except Exception:
+                    yield "All models are currently unavailable. Please try again later."
+            else:
+                yield "An error occurred. Please try again."
+
     def is_numerical_question(self, question: str) -> bool:
         """Detect if question is a numerical problem requiring calculation"""
         numerical_keywords = [
@@ -510,75 +597,61 @@ class RAGEngine:
         """Generator that yields answer chunks as they arrive"""
         question = self.enhance_question(question, history)
 
-        # ── Numerical question → use compound-mini with code execution ──
+        # ── Numerical question path ──────────────────────────
         if self.is_numerical_question(question):
+
+            # Retrieve relevant chunks so model sees worked examples from textbook
+            retriever = self.vectorstore.as_retriever(
+                search_type="mmr",
+                search_kwargs={"k": 6, "fetch_k": 20}
+            )
+            num_docs = retriever.invoke(question)
+            num_context = "\n\n".join(d.page_content for d in num_docs) if num_docs else ""
+
+            # Step 1: try compound-mini
+            compound_success = False
             try:
                 from groq import Groq as GroqClient
                 client = GroqClient(api_key=os.getenv("GROQ_API_KEY"))
-                yield "🔢 Running calculations...\n\n"
-
-                numerical_prompt = f"""You are an IC Engine professor.
-                Solve this numerical problem step by step.
-
-                CRITICAL RULES:
-                - A = π/4 × d² — keep ALL decimal places, do NOT round A
-                - bp = bmep × L × A × (N/2) × K / 60
-                - ip = bp / η_mech
-                - fp = ip - bp
-                - For 4-stroke: use N/2 for power strokes per minute, then divide by 60
-                - 9^0.4=2.408, 10^0.4=2.512, 16^0.4=3.031, 18^0.4=3.178
-                - 8^0.4=2.297, 8.5^0.4=2.354, 2.2^1.4=3.016, 2.5^1.4=3.607
-
-                Problem: {question}"""
+                numerical_prompt = self._build_numerical_prompt(question, context=num_context)
                 response = client.chat.completions.create(
-                model="groq/compound-mini",
-                messages=[{"role": "user", "content": numerical_prompt}],
-                max_tokens=2000
-            )
+                    model="groq/compound-mini",
+                    messages=[{"role": "user", "content": numerical_prompt}],
+                    max_tokens=2000
+                )
                 msg = response.choices[0].message
-                # compound-mini may return answer in content or reasoning
-                answer = msg.content or ''
+                answer = msg.content or ""
                 if not answer:
-                    answer = getattr(msg, 'reasoning', '') or ''
+                    answer = getattr(msg, "reasoning", "") or ""
                 if not answer:
                     raise Exception("Empty response from compound-mini")
-                # Stream it word by word for consistent UI experience
-                words = answer.split(' ')
+                words = answer.split(" ")
                 for i, word in enumerate(words):
-                    if i < len(words) - 1:
-                        yield word + ' '
-                    else:
-                        yield word
-                return
-            except Exception as e:
-                if "429" in str(e):
-                    # Compound rate limited → go directly to Scout
-                    scout = ChatGroq(
-                        model="meta-llama/llama-4-scout-17b-16e-instruct",
-                        temperature=0
-                    )
-                    try:
-                        for chunk in scout.stream(question):
-                            yield chunk.content
-                    except Exception:
-                        pass
-                    return
-                else:
-                    yield f"⚠️ Error: {str(e)}. Retrying...\n\n"
-                # Fall through to standard RAG pipeline
+                    yield word + (" " if i < len(words) - 1 else "")
+                compound_success = True
+            except Exception:
+                pass  # silently fall through to Scout
 
-        # ── Standard RAG pipeline for conceptual questions ──
-        retriever = self.vectorstore.as_retriever(
-            search_type="mmr",
-            search_kwargs={"k": top_k, "fetch_k": 20}
-        )
-        docs = retriever.invoke(question)
+            if not compound_success:
+                yield from self._stream_scout_numerical(question, context=num_context)
+            return
 
-        if not docs:
+        # ── Conceptual question path (RAG) ───────────────────
+        use_rag = self.needs_rag(question)
+        if use_rag:
+            retriever = self.vectorstore.as_retriever(
+                search_type="mmr",
+                search_kwargs={"k": top_k, "fetch_k": 20}
+            )
+            docs = retriever.invoke(question)
+        else:
+            docs = []
+
+        if use_rag and not docs:
             yield "No documents found in the database."
             return
 
-        context = "\n\n".join(d.page_content for d in docs)
+        context = "\n\n".join(d.page_content for d in docs) if docs else                   "Use the formulas provided in your instructions to solve this problem."
 
         history_text = ""
         if history:
@@ -592,49 +665,51 @@ class RAGEngine:
             history=history_text
         )
 
-        # Stream the response with auto model switching
+        def is_rate_limit(e):
+            msg = str(e).lower()
+            return any(k in msg for k in ["429", "rate_limit", "quota", "resource_exhausted", "resourceexhausted"])
+
+        def stream_llm(llm, prompt):
+            for chunk in llm.stream(prompt):
+                text = chunk.content
+                if text:
+                    yield text
+
         try:
             total_chars = 0
-            for chunk in self.llm.stream(prompt_value):
-                content = chunk.content
-                total_chars += len(content)
-                yield content
-            # Estimate tokens (rough: 4 chars per token)
+            for text in stream_llm(self.llm, prompt_value):
+                total_chars += len(text)
+                yield text
             token_stats["used"] += len(prompt_value) // 4 + total_chars // 4
 
         except Exception as e:
-            if "429" in str(e) or "rate_limit" in str(e).lower():
+            if is_rate_limit(e):
                 if self.current_model == "llama-3.3-70b-versatile":
                     print("Rate limit hit — switching to Llama 4 Scout automatically")
                     self.switch_model("meta-llama/llama-4-scout-17b-16e-instruct")
-                    yield "\n\n⚠️ Switched to Llama 4 Scout due to rate limit. Retrying...\n\n"
                     try:
-                        for chunk in self.llm.stream(prompt_value):
-                            yield chunk.content
+                        yield from stream_llm(self.llm, prompt_value)
                     except Exception as e2:
-                        if "429" in str(e2):
+                        if is_rate_limit(e2):
                             self.switch_model("llama-3.1-8b-instant")
-                            yield "\n\n⚠️ Switched to 8B model. Retrying...\n\n"
                             try:
-                                for chunk in self.llm.stream(prompt_value):
-                                    yield chunk.content
-                            except Exception as e3:
-                                yield "⚠️ All models rate limited. Please try again tomorrow."
+                                yield from stream_llm(self.llm, prompt_value)
+                            except Exception:
+                                yield "All models are currently unavailable. Please try again later."
                         else:
-                            yield f"⚠️ An error occurred: {str(e2)}"
+                            yield "An error occurred. Please try again."
                 elif self.current_model == "meta-llama/llama-4-scout-17b-16e-instruct":
-                    print("Rate limit hit — switching to 8b model automatically")
+                    print("Rate limit hit — switching to 8B model automatically")
                     self.switch_model("llama-3.1-8b-instant")
-                    yield "\n\n⚠️ Switched to 8B model due to rate limit. Retrying...\n\n"
                     try:
-                        for chunk in self.llm.stream(prompt_value):
-                            yield chunk.content
-                    except Exception as e2:
-                        yield "⚠️ All models rate limited. Please try again tomorrow."
+                        yield from stream_llm(self.llm, prompt_value)
+                    except Exception:
+                        yield "All models are currently unavailable. Please try again later."
                 else:
-                    yield "⚠️ Daily limit reached on all models. Please try again tomorrow."
+                    yield "All models are currently unavailable. Please try again later."
             else:
-                yield f"⚠️ An error occurred: {str(e)}"
+                print(f"Streaming error | model={self.current_model} | error={str(e)}")
+                yield f"Error: {str(e)}"
 
 
 rag = RAGEngine()
