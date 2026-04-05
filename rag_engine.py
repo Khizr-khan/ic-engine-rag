@@ -120,8 +120,6 @@ CRITICAL EXPONENT VALUES — use these exact values:
   8.5^0.4 = 2.354
   9^0.4   = 2.408
   10^0.4  = 2.512
-  12^0.4  = 2.702
-  14^0.4  = 2.874
   16^0.4  = 3.031
   18^0.4  = 3.178
   20^0.4  = 3.314
@@ -260,8 +258,8 @@ CRITICAL RULES:
 - Keep imep/bmep in kPa — do NOT convert to Pa
 
 EXPONENT VALUES (use exactly):
-  Otto/Diesel (γ-1 = 0.4):  8^0.4=2.297, 9^0.4=2.408, 10^0.4=2.512, 12^0.4=2.702, 14^0.4=2.874, 16^0.4=3.031, 18^0.4=3.178, 20^0.4=3.314
-  CRITICAL: never guess — each value is unique. 10^0.4=2.512 ≠ 14^0.4=2.874 ≠ 16^0.4=3.031
+  Otto/Diesel (γ-1 = 0.4):  8^0.4=2.297, 9^0.4=2.408, 10^0.4=2.512, 16^0.4=3.031, 18^0.4=3.178
+  CRITICAL: 16^0.4=3.031 and 18^0.4=3.178 are DIFFERENT — never mix them up
   Diesel cutoff (rc^1.4):   2^1.4=2.639, 2.2^1.4=3.016, 2.5^1.4=3.607, 3^1.4=4.656
   Brayton ((γ-1)/γ=0.2857): 4^0.2857=1.486, 6^0.2857=1.669, 8^0.2857=1.811, 10^0.2857=1.931
 
@@ -581,6 +579,94 @@ class RAGEngine:
             else:
                 yield "An error occurred. Please try again."
 
+
+    # ─────────────────────────────────────────────────────────
+    # Python executor — guaranteed exact arithmetic
+    # ─────────────────────────────────────────────────────────
+    def _execute_python_calculation(self, question: str) -> str:
+        """
+        Ask Scout to write Python code, execute it locally,
+        then ask Scout to format the result nicely.
+        Returns formatted answer string or None if failed.
+        """
+        import re, subprocess
+
+        # Step A: Ask Scout to write Python code only
+        code_prompt = f"""Write Python code to solve this IC Engine numerical problem.
+
+STRICT RULES:
+- import math at the top
+- Use math.pi for pi
+- Keep imep/bmep in kPa — do NOT convert to Pa
+- For 4-stroke power: ip = imep * L * A * (N/2) * K / 60  (result in kW directly)
+- /60 appears ONCE at the very end — NEVER divide N by 60 separately first
+- Print each step with a label e.g. print(f"A = {{A:.6f}} m2")
+- Print final answers clearly e.g. print(f"ip = {{ip:.2f}} kW")
+- Output ONLY executable Python code — no explanation, no markdown
+
+Problem: {question}"""
+
+        scout = ChatGroq(model="meta-llama/llama-4-scout-17b-16e-instruct", temperature=0)
+        try:
+            code_response = scout.invoke(code_prompt).content
+        except Exception as e:
+            print(f"[executor] Scout code generation failed: {e}")
+            return None
+
+        # Strip markdown code fences if present
+        match = re.search(r"```(?:python)?\n(.*?)```", code_response, re.DOTALL)
+        code = match.group(1) if match else code_response.strip()
+        print(f"[executor] Generated code:\n{code[:400]}")
+
+        # Step B: Execute the Python code
+        try:
+            result = subprocess.run(
+                ["python3", "-c", code],
+                capture_output=True, text=True, timeout=15
+            )
+            output = result.stdout.strip()
+            error  = result.stderr.strip()
+
+            if error and not output:
+                print(f"[executor] Python error: {error}")
+                return None
+            if not output:
+                print("[executor] No output produced")
+                return None
+
+            print(f"[executor] Output: {output}")
+
+        except subprocess.TimeoutExpired:
+            print("[executor] Timed out")
+            return None
+        except Exception as e:
+            print(f"[executor] Run error: {e}")
+            return None
+
+        # Step C: Ask Scout to present the results clearly
+        format_prompt = f"""You are an IC Engine professor presenting a solved problem.
+
+Student question: {question}
+
+Python calculated these exact values:
+{output}
+
+Present a clean step-by-step solution:
+- State each formula used
+- Show substitution with actual values
+- Show the result of each step
+- Give final answers with units
+- Add a short verification checklist
+
+Rules: plain text only, no LaTeX, no markdown math.
+Use: T_2, η_th, i_p, b_p, f_p notation."""
+
+        try:
+            formatted = scout.invoke(format_prompt).content
+            return formatted
+        except Exception:
+            return f"Results:\n{output}"
+
     def is_numerical_question(self, question: str) -> bool:
         """Detect if question is a numerical problem requiring calculation"""
         numerical_keywords = [
@@ -610,67 +696,63 @@ class RAGEngine:
             num_docs = retriever.invoke(question)
             num_context = "\n\n".join(d.page_content for d in num_docs) if num_docs else ""
 
-            # Step 1: try compound-mini
+            # Step 1: Try compound-mini (has built-in Python executor)
             compound_success = False
             try:
                 from groq import Groq as GroqClient
                 client = GroqClient(api_key=os.getenv("GROQ_API_KEY"))
                 numerical_prompt = self._build_numerical_prompt(question, context=num_context)
+                numerical_prompt += "\n\nIMPORTANT: You MUST write and execute Python code. Do not solve manually."
                 response = client.chat.completions.create(
                     model="groq/compound-mini",
                     messages=[{"role": "user", "content": numerical_prompt}],
                     max_tokens=2000
                 )
                 msg = response.choices[0].message
-                print(f"compound-mini raw msg: {msg}")
-                print(f"compound-mini content: {msg.content}")
-                print(f"compound-mini model_fields: {msg.model_fields_set}")
-                
                 answer = msg.content or ""
                 if not answer:
                     answer = getattr(msg, "reasoning", "") or ""
                 if not answer:
-                    # Check all attributes
-                    for attr in ["tool_calls", "function_call", "refusal", "audio"]:
-                        val = getattr(msg, attr, None)
-                        if val:
-                            print(f"compound-mini {attr}: {val}")
-                            answer = str(val)
-                            break
-                if not answer:
-                    print("compound-mini returned empty — falling to Scout")
                     raise Exception("Empty response from compound-mini")
-                import re
+
                 # Clean LaTeX from compound-mini output
-                answer = re.sub(r'\\\[|\\\]', '\n', answer)
-                answer = re.sub(r'\\\(|\\\)', '', answer)
-                answer = re.sub(r'\\boxed\{([^}]*)\}', r'\1', answer)
-                answer = re.sub(r'\\frac\{([^}]*)\}\{([^}]*)\}', r'(\1/\2)', answer)
-                answer = re.sub(r'\\text\{([^}]*)\}', r'\1', answer)
-                answer = re.sub(r'\\begin\{[^}]*\}|\\end\{[^}]*\}', '', answer)
-                answer = re.sub(r'\\left|\\right', '', answer)
-                answer = re.sub(r'\\mathbf\{([^}]*)\}', r'\1', answer)
-                answer = re.sub(r'\\;|\\,|\\!|\\quad|\\qquad', ' ', answer)
-                answer = answer.replace('\\times', '×')
-                answer = answer.replace('\\eta', 'η')
-                answer = answer.replace('\\pi', '3.1416')
-                answer = re.sub(r'\\[a-zA-Z]+\s?', '', answer)
-                # Round long decimals for cleaner display
-                answer = re.sub(
-                    r'\d+\.\d{7,}',
-                    lambda m: str(round(float(m.group()), 4)),
-                    answer
-                )
+                import re as _re
+                answer = _re.sub(r'\\\[|\\\]', '\n', answer)
+                answer = _re.sub(r'\\\(|\\\)', '', answer)
+                answer = _re.sub(r'\\boxed\{([^}]*)\}', r'\1', answer)
+                answer = _re.sub(r'\\frac\{([^}]*)\}\{([^}]*)\}', r'(\1/\2)', answer)
+                answer = _re.sub(r'\\text\{([^}]*)\}', r'\1', answer)
+                answer = _re.sub(r'\\begin\{[^}]*\}|\\end\{[^}]*\}', '', answer)
+                answer = _re.sub(r'\\mathbf\{([^}]*)\}', r'\1', answer)
+                answer = _re.sub(r'\\;|\\,|\\!|\\quad|\\qquad', ' ', answer)
+                answer = answer.replace('\\times','×').replace('\\eta','η').replace('\\pi','π')
+                answer = _re.sub(r'\\[a-zA-Z]+\s?', '', answer)
+                answer = _re.sub(r'\d+\.\d{7,}', lambda m: str(round(float(m.group()), 4)), answer)
+
                 words = answer.split(" ")
                 for i, word in enumerate(words):
                     yield word + (" " if i < len(words) - 1 else "")
                 compound_success = True
+                print("[compound-mini] succeeded")
 
-            except Exception:
-                pass  # silently fall through to Scout
+            except Exception as e:
+                print(f"[compound-mini] failed: {e} — trying Python executor")
 
+            # Step 2: Python executor — guaranteed exact arithmetic
             if not compound_success:
+                print("[executor] attempting local Python execution")
+                result = self._execute_python_calculation(question)
+                if result:
+                    words = result.split(" ")
+                    for i, word in enumerate(words):
+                        yield word + (" " if i < len(words) - 1 else "")
+                    return
+
+            # Step 3: Last resort — Scout with full numerical prompt
+            if not compound_success:
+                print("[Scout fallback] using Scout with numerical prompt")
                 yield from self._stream_scout_numerical(question, context=num_context)
+
             return
 
         # ── Conceptual question path (RAG) ───────────────────

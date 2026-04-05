@@ -1,834 +1,765 @@
-import os
-from huggingface_hub import snapshot_download
-from langchain_groq import ChatGroq
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_chroma import Chroma
-from langchain_core.prompts import PromptTemplate
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
+import streamlit as st
+import requests
+import re
 
-load_dotenv()
+st.set_page_config(
+    page_title="IC Engine Assistant",
+    page_icon="⚙️",
+    layout="centered",
+    initial_sidebar_state="collapsed"
+)
 
-CHROMA_DIR = "./chroma_ic_db"
-HF_REPO_ID = "Khizr72/ic-engine-chromadb"
+API_URL = "https://khizr72-ic-engine-rag-v2.hf.space"
 
-# Token tracking
-token_stats = {
-    "used": 0,
-    "limit": 100000,
-    "model": "llama-3.3-70b-versatile"
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+
+#MainMenu, footer, header { visibility: hidden; }
+.block-container { padding-top: 0 !important; max-width: 860px; }
+.stApp { background: #0a0d0e; font-family: 'IBM Plex Sans', sans-serif; }
+
+.blueprint-bg {
+    position: fixed; top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    z-index: 0; pointer-events: none; opacity: 0.05;
 }
 
-MODELS = {
-    "llama-3.3-70b-versatile":                   {"limit": 100000, "label": "70B (High Quality)"},
-    "llama-3.1-8b-instant":                      {"limit": 500000, "label": "8B (Fast)"},
-    "meta-llama/llama-4-scout-17b-16e-instruct": {"limit": 100000, "label": "Llama 4 Scout"},
+.app-header {
+    display: flex; align-items: center; gap: 14px;
+    padding: 10px 0;
+    background: transparent;
+}
+.header-icon {
+    width: 42px; height: 42px; border-radius: 11px;
+    background: rgba(26,58,26,0.9);
+    border: 1px solid rgba(74,222,128,0.3);
+    display: flex; align-items: center; justify-content: center; font-size: 20px;
+}
+.header-title { font-size: 17px; font-weight: 600; color: #e8e6df; letter-spacing: -0.2px; }
+.header-sub { font-size: 10px; color: #6b7a6b; letter-spacing: 0.08em; font-family: 'IBM Plex Mono', monospace; }
+
+.user-bubble { display: flex; justify-content: flex-end; margin: 6px 0; }
+.user-bubble-inner {
+    max-width: 70%;
+    background: rgba(20,50,20,0.95);
+    border-radius: 16px 16px 3px 16px;
+    padding: 12px 16px; color: #d4f7d4;
+    font-size: 14px; line-height: 1.65;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+}
+.ai-bubble { display: flex; justify-content: flex-start; margin: 6px 0; }
+.ai-bubble-inner {
+    max-width: 75%;
+    background: rgba(16,22,16,0.92);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(74,222,128,0.12);
+    border-radius: 16px 16px 16px 3px;
+    padding: 14px 17px; color: #e8e6df;
+    font-size: 14px; line-height: 1.7;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.3);
 }
 
-def download_database():
-    if not os.path.exists(CHROMA_DIR) or not os.listdir(CHROMA_DIR):
-        print("Database not found locally — downloading from Hugging Face...")
-        snapshot_download(
-            repo_id=HF_REPO_ID,
-            repo_type="dataset",
-            local_dir=CHROMA_DIR,
-            token=os.getenv("HF_TOKEN")
+.empty-state { text-align: center; padding: 60px 20px 40px; }
+.empty-icon { font-size: 56px; margin-bottom: 20px; display: block; }
+.empty-title { font-size: 22px; font-weight: 600; color: #e8e6df; letter-spacing: -0.3px; margin-bottom: 10px; }
+.empty-subtitle { font-size: 13px; color: #6b7a6b; line-height: 1.6; max-width: 360px; margin: 0 auto 32px; }
+.sugg-title { font-size: 11px; color: #6b7a6b; letter-spacing: 0.08em; font-family: 'IBM Plex Mono', monospace; margin-bottom: 12px; text-align: center; }
+
+.error-box {
+    background: rgba(40,10,10,0.9); border: 1px solid #5a1a1a;
+    border-radius: 10px; padding: 10px 14px;
+    font-size: 13px; color: #f87171;
+    font-family: 'IBM Plex Mono', monospace; margin: 8px 0;
+}
+
+.quiz-box {
+    background: rgba(16,22,16,0.92);
+    border: 1px solid rgba(74,222,128,0.3);
+    border-radius: 12px; padding: 16px;
+    margin: 8px 0;
+    color: #e8e6df;
+    font-size: 14px;
+    line-height: 1.7;
+}
+.quiz-correct {
+    color: #4ade80; padding: 10px;
+    background: rgba(26,58,26,0.8);
+    border-radius: 8px; margin: 8px 0;
+}
+.quiz-wrong {
+    color: #f87171; padding: 10px;
+    background: rgba(40,10,10,0.8);
+    border-radius: 8px; margin: 8px 0;
+}
+.quiz-explanation {
+    color: #6b7a6b; font-size: 12px; padding: 8px;
+    background: rgba(16,22,16,0.8);
+    border-radius: 8px; margin: 4px 0;
+}
+
+.stTextInput > div > div > input {
+    background: rgba(14,18,14,0.85) !important;
+    border: 1px solid rgba(74,222,128,0.2) !important;
+    border-radius: 12px !important; color: #e8e6df !important;
+    font-family: 'IBM Plex Mono', monospace !important;
+    font-size: 14px !important; padding: 12px 15px !important;
+}
+.stTextArea > div > div > textarea {
+    background: rgba(14,18,14,0.85) !important;
+    border: 1px solid rgba(74,222,128,0.2) !important;
+    border-radius: 12px !important; color: #e8e6df !important;
+    font-family: 'IBM Plex Mono', monospace !important;
+    font-size: 14px !important; padding: 12px 15px !important;
+    resize: vertical !important;
+    min-height: 52px !important;
+    max-height: 300px !important;
+    overflow-y: auto !important;
+}
+.stTextInput > div > div > input:focus,
+.stTextArea > div > div > textarea:focus {
+    border-color: #4ade80 !important;
+    box-shadow: 0 0 0 2px rgba(74,222,128,0.15) !important;
+}
+
+.stButton > button {
+    background: #4ade80 !important; color: #0a1a0a !important;
+    border: none !important; border-radius: 10px !important;
+    font-family: 'IBM Plex Mono', monospace !important;
+    font-weight: 600 !important; font-size: 13px !important;
+    padding: 10px 20px !important; transition: all 0.2s !important;
+}
+.stButton > button:hover { background: #22c55e !important; }
+
+.sugg-btn > button {
+    background: rgba(16,22,16,0.8) !important; color: #6b7a6b !important;
+    border: 1px solid rgba(74,222,128,0.15) !important;
+    border-radius: 20px !important; font-size: 12px !important;
+    font-family: 'IBM Plex Mono', monospace !important;
+}
+.sugg-btn > button:hover {
+    border-color: #4ade80 !important; color: #4ade80 !important;
+    background: rgba(26,58,26,0.8) !important;
+}
+
+hr { border-color: rgba(74,222,128,0.1) !important; margin: 16px 0 !important; }
+
+.stSelectbox > div > div {
+    background: rgba(14,18,14,0.85) !important;
+    border: 1px solid rgba(74,222,128,0.2) !important;
+    border-radius: 10px !important;
+    color: #e8e6df !important;
+    font-family: 'IBM Plex Mono', monospace !important;
+    font-size: 13px !important;
+    cursor: pointer !important;
+}
+.stSelectbox > div > div > div {
+    color: #e8e6df !important;
+    font-family: 'IBM Plex Mono', monospace !important;
+}
+.stSelectbox input {
+    pointer-events: none !important;
+    caret-color: transparent !important;
+}
+</style>
+
+<svg class="blueprint-bg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#4ade80" stroke-width="0.4"/>
+    </pattern>
+    <pattern id="smallgrid" width="8" height="8" patternUnits="userSpaceOnUse">
+      <path d="M 8 0 L 0 0 0 8" fill="none" stroke="#4ade80" stroke-width="0.15"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="800" fill="url(#smallgrid)"/>
+  <rect width="1200" height="800" fill="url(#grid)"/>
+  <g transform="translate(580,340)" stroke="#4ade80" fill="none" stroke-width="1">
+    <rect x="-80" y="-160" width="160" height="220" rx="4" stroke-width="1.5"/>
+    <ellipse cx="0" cy="-160" rx="50" ry="12"/>
+    <rect x="-50" y="-160" width="100" height="190"/>
+    <rect x="-42" y="-40" width="84" height="50" rx="3" stroke-width="1.5"/>
+    <line x1="-30" y1="-40" x2="-30" y2="-30"/>
+    <line x1="30" y1="-40" x2="30" y2="-30"/>
+    <line x1="-30" y1="-20" x2="30" y2="-20"/>
+    <line x1="0" y1="10" x2="0" y2="100" stroke-width="2"/>
+    <ellipse cx="0" cy="10" rx="12" ry="8"/>
+    <circle cx="0" cy="110" r="40" stroke-width="1.5"/>
+    <circle cx="0" cy="110" r="8" stroke-width="2"/>
+    <rect x="-70" y="-170" width="12" height="30" rx="2"/>
+    <rect x="58" y="-170" width="12" height="30" rx="2"/>
+    <circle cx="0" cy="-178" r="6" stroke-width="1.5"/>
+    <line x1="0" y1="-172" x2="0" y2="-160"/>
+  </g>
+  <g transform="translate(140,130)" stroke="#4ade80" fill="none" stroke-width="0.8">
+    <text x="-10" y="-60" fill="#4ade80" font-family="monospace" font-size="9" stroke="none">TURBOCHARGER</text>
+    <circle cx="0" cy="0" r="50"/>
+    <circle cx="0" cy="0" r="15"/>
+    <line x1="0" y1="-15" x2="0" y2="-44" stroke-width="1.5"/>
+    <line x1="0" y1="15" x2="0" y2="44" stroke-width="1.5"/>
+    <line x1="-15" y1="0" x2="-44" y2="0" stroke-width="1.5"/>
+    <line x1="15" y1="0" x2="44" y2="0" stroke-width="1.5"/>
+    <line x1="60" y1="0" x2="120" y2="0" stroke-width="2"/>
+    <circle cx="170" cy="0" r="50"/>
+    <circle cx="170" cy="0" r="15"/>
+    <line x1="170" y1="-15" x2="170" y2="-44" stroke-width="1.5"/>
+    <line x1="170" y1="15" x2="170" y2="44" stroke-width="1.5"/>
+    <text x="-70" y="4" fill="#4ade80" font-family="monospace" font-size="7" stroke="none">AIR IN</text>
+    <text x="230" y="4" fill="#4ade80" font-family="monospace" font-size="7" stroke="none">HOT GAS</text>
+  </g>
+  <g transform="translate(80,540)" stroke="#4ade80" fill="none">
+    <text x="0" y="-20" fill="#4ade80" font-family="monospace" font-size="9" stroke="none">OTTO CYCLE P-V DIAGRAM</text>
+    <line x1="0" y1="0" x2="0" y2="-180" stroke-width="1"/>
+    <line x1="0" y1="0" x2="220" y2="0" stroke-width="1"/>
+    <text x="100" y="18" fill="#4ade80" font-family="monospace" font-size="8" stroke="none">VOLUME</text>
+    <path d="M 180,-10 C 170,-15 150,-20 120,-30 C 90,-45 70,-70 60,-110 L 30,-160 L 30,-20 C 60,-22 100,-18 140,-14 Z" stroke-width="1.5"/>
+    <circle cx="30" cy="-20" r="3" fill="#4ade80"/>
+    <circle cx="30" cy="-160" r="3" fill="#4ade80"/>
+    <circle cx="180" cy="-10" r="3" fill="#4ade80"/>
+  </g>
+  <g transform="translate(980,160)" stroke="#4ade80" fill="none">
+    <text x="-60" y="-30" fill="#4ade80" font-family="monospace" font-size="9" stroke="none">VALVE TIMING</text>
+    <circle cx="0" cy="0" r="100" stroke-width="1"/>
+    <circle cx="0" cy="0" r="4" fill="#4ade80"/>
+    <line x1="0" y1="-105" x2="0" y2="105" stroke-width="0.5" stroke-dasharray="2,4"/>
+    <line x1="-105" y1="0" x2="105" y2="0" stroke-width="0.5" stroke-dasharray="2,4"/>
+    <text x="2" y="-108" fill="#4ade80" font-family="monospace" font-size="7" stroke="none">TDC</text>
+    <text x="2" y="118" fill="#4ade80" font-family="monospace" font-size="7" stroke="none">BDC</text>
+    <path d="M 0,-100 A 100,100 0 0,1 87,50" stroke-width="2.5"/>
+    <path d="M -87,50 A 100,100 0 0,1 0,-100" stroke-width="2" stroke-dasharray="5,3"/>
+    <text x="50" y="-70" fill="#4ade80" font-family="monospace" font-size="7" stroke="none">IVO</text>
+    <text x="-105" y="40" fill="#4ade80" font-family="monospace" font-size="7" stroke="none">EVO</text>
+  </g>
+  <g fill="#4ade80" font-family="monospace" font-size="8" opacity="0.8">
+    <text x="50" y="50">CR = Vc/Vs + 1</text>
+    <text x="860" y="50">n_th = 1 - 1/r^(y-1)</text>
+    <text x="50" y="775">MEP = W_net / V_displacement</text>
+    <text x="790" y="775">BSFC = mf / P_brake</text>
+    <text x="400" y="50">BORE x STROKE</text>
+  </g>
+</svg>
+""", unsafe_allow_html=True)
+
+# ── Token stats helpers ───────────────────────────────────────────────────────
+def get_token_stats():
+    try:
+        res = requests.get(f"{API_URL}/token-stats", timeout=5)
+        if res.status_code == 200:
+            return res.json()
+    except:
+        pass
+    return None
+
+def switch_model(model: str):
+    try:
+        res = requests.post(
+            f"{API_URL}/switch-model",
+            json={"model": model},
+            timeout=10
         )
-        print("Database downloaded successfully!")
+        return res.status_code == 200
+    except:
+        return False
+
+# ── Session state ─────────────────────────────────────────────────────────────
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "suggested" not in st.session_state:
+    st.session_state.suggested = None
+if "quiz_mode" not in st.session_state:
+    st.session_state.quiz_mode = False
+if "quiz_questions" not in st.session_state:
+    st.session_state.quiz_questions = []
+if "quiz_index" not in st.session_state:
+    st.session_state.quiz_index = 0
+if "quiz_score" not in st.session_state:
+    st.session_state.quiz_score = 0
+if "quiz_answered" not in st.session_state:
+    st.session_state.quiz_answered = False
+if "last_result" not in st.session_state:
+    st.session_state.last_result = None
+if "input_counter" not in st.session_state:
+    st.session_state.input_counter = 0
+if "input_value" not in st.session_state:
+    st.session_state.input_value = ""
+
+# ── Header with token tracker and model switcher ──────────────────────────────
+stats = get_token_stats()
+
+col_header, col_model, col_tokens = st.columns([3, 2, 2])
+
+with col_header:
+    st.markdown("""
+    <div class="app-header">
+      <div class="header-icon">⚙️</div>
+      <div>
+        <div class="header-title">IC Engine Assistant</div>
+        <div class="header-sub">POWERED BY COURSE MATERIAL</div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+with col_model:
+    st.markdown("<div style='padding-top:14px'>", unsafe_allow_html=True)
+    current_model = stats["model"] if stats else "llama-3.3-70b-versatile"
+    MODEL_OPTIONS = [
+        "llama-3.3-70b-versatile",
+        "llama-3.1-8b-instant",
+        "meta-llama/llama-4-scout-17b-16e-instruct",
+    ]
+    MODEL_LABELS = {
+        "llama-3.3-70b-versatile":                   "70B — High Quality",
+        "llama-3.1-8b-instant":                      "8B — Fast",
+        "meta-llama/llama-4-scout-17b-16e-instruct": "Llama 4 Scout",
+    }
+    current_index = MODEL_OPTIONS.index(current_model) if current_model in MODEL_OPTIONS else 0
+    selected = st.selectbox(
+    "Model",
+    options=MODEL_OPTIONS,
+    format_func=lambda x: MODEL_LABELS[x],
+        index=current_index,
+        label_visibility="collapsed"
+    )
+    if selected != current_model:
+        if switch_model(selected):
+            st.success("Switched!")
+            st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
+
+with col_tokens:
+    st.markdown("<div style='padding-top:14px'>", unsafe_allow_html=True)
+    if stats:
+        used = stats["used"]
+        limit = stats["limit"]
+        remaining = stats["remaining"]
+        pct = stats["percent_used"]
+        color = "#4ade80" if pct < 70 else "#facc15" if pct < 90 else "#f87171"
+        st.markdown(f"""
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:{color}">
+            TOKENS: {used:,} / {limit:,}<br>
+            LEFT: {remaining:,} ({100-pct:.0f}%)<br>
+            <div style="background:#1a3a1a;border-radius:4px;height:6px;margin-top:4px">
+                <div style="background:{color};width:{min(pct,100)}%;height:6px;border-radius:4px"></div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
     else:
-        print("Database found locally — skipping download")
+        st.markdown("""
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6b7a6b">
+            TOKENS: unavailable
+        </div>
+        """, unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
-download_database()
+st.markdown("<hr style='border-color:rgba(74,222,128,0.1);margin:0 0 16px 0'>", unsafe_allow_html=True)
 
-PROMPT_TEMPLATE = """You are an expert IC Engine professor at a top engineering university. You have deep knowledge of internal combustion engines and teach with clarity, precision, and pedagogical excellence. Your answers come ONLY from the context provided below.
+# ── Helpers ───────────────────────────────────────────────────────────────────
+def build_history():
+    history = []
+    for msg in st.session_state.messages:
+        role = "user" if msg["role"] == "user" else "assistant"
+        history.append({"role": role, "content": msg["text"]})
+    return history
 
-═══════════════════════════════════════════════════════
-RESPONSE TYPE DETECTION — read question carefully first
-═══════════════════════════════════════════════════════
+def format_subscripts(text: str) -> str:
+    # Remove markdown bold and italic
+    text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
+    text = re.sub(r'\*(.*?)\*', r'\1', text)
+    # Remove inline LaTeX $ delimiters
+    text = re.sub(r'\$\$(.*?)\$\$', r'\1', text)
+    text = re.sub(r'\$(.*?)\$', r'\1', text)
+    # Remove LaTeX environments
+    text = re.sub(r'\\begin\{.*?\}', '', text)
+    text = re.sub(r'\\end\{.*?\}', '', text)
+    text = re.sub(r'\{aligned\}', '', text)
+    # Remove LaTeX commands
+    text = re.sub(r'\\frac\{(.*?)\}\{(.*?)\}', r'(\1/\2)', text)
+    text = re.sub(r'\\times', '×', text)
+    text = re.sub(r'\\eta', 'η', text)
+    text = re.sub(r'\\gamma', 'γ', text)
+    text = re.sub(r'\\pi', 'π', text)
+    text = re.sub(r'\\text\{(.*?)\}', r'\1', text)
+    text = re.sub(r'\\\[|\\\]', '', text)
+    text = re.sub(r'\\\(|\\\)', '', text)
+    text = re.sub(r'\\;', ' ', text)
+    text = re.sub(r'\\,', ' ', text)
+    text = re.sub(r'\\!', '', text)
+    text = re.sub(r'\\\\', '\n', text)
+    text = re.sub(r'\\_', '_', text)
+    text = re.sub(r'\\\w+', '', text)
+    # Remove backslashes before %
+    text = text.replace('\\%', '%')
+    # Remove LaTeX curly braces only in subscript/superscript patterns
+    text = re.sub(r'_\{([^}]+)\}', r'_\1', text)
+    text = re.sub(r'\^\{([^}]+)\}', r'^\1', text)
+    # Subscripts
+    text = re.sub(r'V_([A-Za-z0-9]+)', r'V<sub>\1</sub>', text)
+    text = re.sub(r'T_([A-Za-z0-9]+)', r'T<sub>\1</sub>', text)
+    text = re.sub(r'P_([A-Za-z0-9]+)', r'P<sub>\1</sub>', text)
+    text = re.sub(r'η_([A-Za-z0-9]+)', r'η<sub>\1</sub>', text)
+    text = re.sub(r'W_([A-Za-z0-9]+)', r'W<sub>\1</sub>', text)
+    text = re.sub(r'Q_([A-Za-z0-9]+)', r'Q<sub>\1</sub>', text)
+    text = text.replace('\\pi', 'π')
+    return text
 
-TYPE 1 — SHORT ANSWER
-Trigger: question contains "only", "just", "briefly", "formula only", "definition only", "in one line", "short", "don't give very detailed", "concise"
-Response: 1-3 lines MAXIMUM. Formula + Where clause if applicable. Nothing else. No paragraphs.
-
-TYPE 2 — CONCEPTUAL EXPLANATION
-Trigger: question starts with "what is", "define", "what are"
-Response:
-  • Clear definition in 1-2 sentences
-  • Physical significance — why it matters
-  • Formula with full Where clause
-  • Typical values/ranges in real engines
-  • Related concepts briefly mentioned
-
-TYPE 3 — DEEP REASONING (use internal Chain of Thought)
-Trigger: question contains "why", "how does", "what happens when", "effect of", "impact of"
-Process internally:
-  → What is the root cause being asked about?
-  → What physical/thermodynamic principles apply?
-  → What is the chain of causation?
-  → What are the practical implications?
-Write ONLY the final reasoned answer. Never show internal steps. Never show Step 1, Step 2 etc.
-
-TYPE 4 — COMPARISON
-Trigger: question contains "difference", "compare", "vs", "versus", "better than"
-Response:
-  • Key differences in a structured format
-  • Underlying reason for each difference
-  • Practical implications
-  • Which is better and under what conditions
-
-TYPE 5 — DETAILED EXPLANATION
-Trigger: question contains "explain", "describe", "elaborate", "in detail", "discuss"
-Response:
-  • Full comprehensive explanation
-  • Theory and principles
-  • Formula with complete Where clause
-  • Real world example with typical values
-  • Design implications
-  • Related concepts
-
-TYPE 6 — DIAGRAM REQUEST
-Trigger: question contains "draw", "sketch", "diagram", "show", "illustrate"
-Response: Draw detailed ASCII art using these characters:
-┌ ┐ └ ┘ │ ─ ├ ┤ ┬ ┴ ┼ → ↓ ↑ ← ═ ║ ╔ ╗ ╚ ╝
-Label all components clearly. Add a brief explanation after the diagram.
-
-TYPE 7 — NUMERICAL PROBLEM
-Trigger: question contains specific numbers, units, "calculate", "find", "determine", "compute"
-Response:
-  • Identify the correct formula from context
-  • List all given values with units
-  • Show every step of calculation clearly
-  • State final answer with correct units
-  • Verify answer is physically reasonable
-  • You ARE allowed to solve numerical problems using standard IC engine
-    formulas even if the exact problem is not in the textbook
-
-CRITICAL REMINDERS:
-  • /60 is MANDATORY in power formulas — converts per minute to per second
-  • Diesel Q_in uses Cp = γ × Cv (constant pressure), NOT Cv
-  • Diesel T_4 = T_3 × (rc/r)^(γ-1) — NOT T_3 × (1/r)^(γ-1)
-    Example: rc=2, r=14 → T4 = T3 × (2/14)^0.4
-    NEVER use (V3/V4) = 1/r — that ignores the cutoff ratio
-  • Brayton cycle exponent is (γ-1)/γ = 0.2857, NOT γ-1 = 0.4
-    T_2 = T_1 × rp^0.2857  where rp = pressure ratio
-    T_4 = T_3 / rp^0.2857
-    NEVER use 0.4 for Brayton — that is the Otto cycle exponent
-
-CRITICAL EXPONENT VALUES — use these exact values:
-  Otto/Diesel (γ-1 = 0.4):
-  8^0.4   = 2.297
-  8.5^0.4 = 2.354
-  9^0.4   = 2.408
-  10^0.4  = 2.512
-  16^0.4  = 3.031
-  18^0.4  = 3.178
-  20^0.4  = 3.314
-
-  Diesel cutoff (rc^γ where γ=1.4):
-  2^1.4   = 2.639
-  2.2^1.4 = 3.016
-  2.5^1.4 = 3.607
-  3^1.4   = 4.656
-
-  Brayton ((γ-1)/γ = 0.2857):
-  4^0.2857  = 1.486
-  6^0.2857  = 1.669
-  8^0.2857  = 1.811
-  10^0.2857 = 1.931
-  12^0.2857 = 2.031
-
-VERIFICATION STEP — mandatory after solving:
-  1. T2 > T1 always (compression raises temperature)
-  2. η_th must be between 0 and 1
-  3. bp < ip always (friction reduces power)
-  4. Cross-check: η_th = W_net / Q_in (must match formula result)
-  5. For Brayton: verify T4 > T1 (expansion never cools below ambient)
-  If any check fails → recalculate before giving final answer
-
-You ARE allowed to solve numerical problems using these formulas even if the exact problem is not in the textbook.
-
-TYPE 8 — FOLLOW UP
-Trigger: vague questions like "explain more", "give details", "elaborate", "tell me more"
-Response: Expand on the previous topic with additional depth, different examples, or aspects not yet covered.
-
-TYPE 9 — REGENERATE
-Trigger: "regenerate", "try again", "different answer", "rephrase"
-Response: Provide the same information restructured completely differently — new examples, different angle, alternate explanation style.
-
-═══════════════════════════════════════
-FORMATTING RULES — always apply these
-═══════════════════════════════════════
-
-FORMULAS:
-Always present formulas with full explanation:
-  η_th = 1 - (1 / r^(γ-1))
-  Where:
-  η_th = thermal efficiency (dimensionless)
-  r    = compression ratio
-  γ    = ratio of specific heats (≈ 1.4 for air)
-
-VARIABLES — always use underscore subscript notation:
-  Volumes:      V_C, V_S, V_T, V_D
-  Temperatures: T_1, T_2, T_3, T_4
-  Pressures:    P_1, P_2, P_3, P_4
-  Efficiencies: η_th, η_vol, η_mech, η_ind
-  Powers:       W_net, Q_in, Q_out
-  Engine:       bmep, imep, fmep, bp, ip, fp
-
-UNITS — always include units in formulas and answers:
-  Power in kW, Pressure in kPa or bar, Volume in cc or m³
-  Temperature in °C or K, Speed in rpm, Length in mm or m
-
-NUMERICAL ANSWERS:
-  Show all steps. Round to 3 significant figures.
-  Always state the unit with the final answer.
-
-LENGTH CONTROL:
-  If student says "don't give very detailed", "brief", "short", "concise", "in short" → give short answer only, maximum 5 lines, no lengthy paragraphs
-  Match response length to question complexity — never pad with unnecessary text
-
-═══════════════════════════════════════
-STRICT CONTENT RULES
-═══════════════════════════════════════
-
-✓ Answer ONLY from the context provided
-✓ If formula has garbled symbols (��, □) → rewrite using proper notation
-✓ Adapt explanation complexity to the question
-✓ For comparison questions — be balanced, show both sides
-✓ Always be technically accurate
-
-✗ NEVER mention slide times, timestamps, page numbers, document names
-✗ NEVER make up data, values, or relationships not supported by context
-✗ NEVER show internal reasoning steps (Step 1, Step 2 etc)
-✗ NEVER give a long answer when a short one was requested
-✗ NEVER ignore the question type — match response to what was asked
-✗ NEVER use LaTeX notation — use plain text math only
-   Write fractions as: (a/b) instead of LaTeX frac notation
-   Write multiplication as: × symbol
-   Write powers as: r^(γ-1) not LaTeX superscript notation
-   Write multiplication as: × not \times
-✗ NEVER pad answers with generic statements about real-world engines, design implications, or related concepts unless specifically asked
-
-═══════════════════════════════════════
-BOUNDARY CONDITIONS
-═══════════════════════════════════════
-
-If question is NOT about IC engines:
-→ "Please ask questions related to IC engines only."
-
-If topic is NOT in the context:
-→ "This topic is not covered in the course material."
-
-If question is ambiguous:
-→ Answer the most likely interpretation, then note the assumption made.
-
-If student seems confused:
-→ Start with the fundamental concept before building up to the answer.
-
-═══════════════════════════════════════════════
-PROVIDED INFORMATION
-═══════════════════════════════════════════════
-
-Context from course material:
-{context}
-
-Previous Conversation:
-{history}
-
-Student Question:
-{question}
-
-═══════════════════════════════════════════════
-YOUR RESPONSE:
-═══════════════════════════════════════════════"""
-
-# ─────────────────────────────────────────────────────────────
-# Shared numerical prompt builder
-# ─────────────────────────────────────────────────────────────
-NUMERICAL_SYSTEM_PROMPT = """You are an IC Engine professor. Solve the numerical problem step by step.
-
-CRITICAL RULES:
-- A = π/4 × d²  — keep ALL decimal places, do NOT round A early
-- ip  = imep × L × A × (N/2) × K / 60   (kW)
-- bp  = bmep × L × A × (N/2) × K / 60   (kW)
-- fp  = ip - bp
-- η_mech = bp / ip
-- /60 is MANDATORY — converts per-minute to per-second
-- WITHOUT /60 the answer will be 60× too large
-- Keep imep/bmep in kPa — do NOT convert to Pa
-
-EXPONENT VALUES (use exactly):
-  Otto/Diesel (γ-1 = 0.4):  8^0.4=2.297, 9^0.4=2.408, 10^0.4=2.512, 16^0.4=3.031, 18^0.4=3.178
-  CRITICAL: 16^0.4=3.031 and 18^0.4=3.178 are DIFFERENT — never mix them up
-  Diesel cutoff (rc^1.4):   2^1.4=2.639, 2.2^1.4=3.016, 2.5^1.4=3.607, 3^1.4=4.656
-  Brayton ((γ-1)/γ=0.2857): 4^0.2857=1.486, 6^0.2857=1.669, 8^0.2857=1.811, 10^0.2857=1.931
-
-DIESEL RULES:
-  Q_in = Cp × (T3 - T2)   where Cp = γ × Cv  (constant pressure — use Cp NOT Cv)
-  Q_out = Cv × (T4 - T1)
-  T4 = T3 × (rc/r)^(γ-1)  — NOT T3 × (1/r)^(γ-1)
-  Example: rc=2, r=14 → T4 = T3 × (2/14)^0.4 = T3 × (0.1429)^0.4
-  NEVER use (V3/V4) = 1/r — that ignores the cutoff ratio
-
-BRAYTON RULES:
-  Exponent = (γ-1)/γ = 0.2857  — NEVER use 0.4 for Brayton
-  T2 = T1 × rp^0.2857
-  T4 = T3 / rp^0.2857
-
-VERIFICATION (mandatory):
-  1. T2 > T1 always
-  2. 0 < η_th < 1
-  3. bp < ip always
-  4. η_th = W_net / Q_in must match formula result
-"""
-
-
-class RAGEngine:
-    def __init__(self):
-        self.embeddings = HuggingFaceEmbeddings(
-            model_name="all-MiniLM-L6-v2"
+def call_api(question: str, history: list = []):
+    try:
+        res = requests.post(
+            f"{API_URL}/ask-stream",
+            json={"question": question, "top_k": 10, "history": history},
+            stream=True,
+            timeout=180
         )
-        self.vectorstore = Chroma(
-            persist_directory=CHROMA_DIR,
-            embedding_function=self.embeddings
+        if res.status_code == 200:
+            return res, None
+        return None, res.json().get("detail", "Unknown error")
+    except requests.exceptions.ConnectionError:
+        return None, "Cannot reach the server."
+    except requests.exceptions.Timeout:
+        return None, "Request timed out."
+    except Exception as e:
+        return None, str(e)
+
+def call_quiz_api(topic: str, num_questions: int):
+    try:
+        res = requests.post(
+            f"{API_URL}/generate-quiz",
+            json={"topic": topic, "num_questions": num_questions},
+            timeout=120
         )
-        self.current_model = "llama-3.3-70b-versatile"
-        self.llm = ChatGroq(
-            model=self.current_model,
-            temperature=0
-        )
-        self.google_llm = None  # Disabled until Google model name confirmed
-        self.prompt = PromptTemplate.from_template(PROMPT_TEMPLATE)
+        if res.status_code == 200:
+            return res.json(), None
+        return None, res.json().get("detail", "Unknown error")
+    except Exception as e:
+        return None, str(e)
 
-    def switch_model(self, model_name: str):
-        """Switch to a different model"""
-        if model_name in MODELS:
-            self.current_model = model_name
-            self.llm = ChatGroq(model=model_name, temperature=0)
-            token_stats["model"] = model_name
-            token_stats["used"] = 0
-            print(f"Switched to model: {model_name}")
-
-    def get_token_stats(self):
-        return {
-            "used": token_stats["used"],
-            "limit": MODELS[self.current_model]["limit"],
-            "remaining": MODELS[self.current_model]["limit"] - token_stats["used"],
-            "model": self.current_model,
-            "label": MODELS[self.current_model]["label"],
-            "percent_used": round(token_stats["used"] / MODELS[self.current_model]["limit"] * 100, 1)
-        }
-
-    def enhance_question(self, question: str, history: list = []) -> str:
-        question = question.strip()
-
-        short_keywords = ["only", "just", "briefly"]
-        formula_keywords = ["formula", "equation", "expression"]
-        explain_keywords = ["explain", "elaborate", "more detail", "tell me more", "in detail"]
-
-        # If asking for formula without specifying topic — get topic from history
-        # If asking for formula without specifying topic — get topic from history
-# But NOT if asking about meaning/explanation of formula
-        if any(kw in question.lower() for kw in formula_keywords):
-            if "meaning" in question.lower() or "explain" in question.lower():
-        # Student wants explanation — don't treat as formula request
-                pass
-            elif history:
-                last_user_msg = ""
-                for msg in reversed(history):
-                     if msg["role"] == "user":
-                         last_user_msg = msg["content"]
-                         break
-                if last_user_msg:
-                    return f"formula for {last_user_msg}"
-
-# If asking for formula without specifying topic — get topic from history
-        if any(kw in question.lower() for kw in formula_keywords):
-            if "meaning" in question.lower() or "explain" in question.lower():
-                pass
-            else:
-                # Check if question already has a topic specified
-                # e.g. "formula for thermal efficiency" already has topic
-                ic_topics = [
-                    "thermal efficiency", "compression ratio", "volumetric efficiency",
-                    "brake power", "indicated power", "bmep", "imep", "turbocharger",
-                    "otto cycle", "diesel cycle", "stroke", "piston", "cylinder"
-                ]
-                has_topic = any(topic in question.lower() for topic in ic_topics)
-                if not has_topic and history:
-                    last_user_msg = ""
-                    for msg in reversed(history):
-                        if msg["role"] == "user":
-                            last_user_msg = msg["content"]
-                            break
-                    if last_user_msg:
-                        return f"formula for {last_user_msg}"
-            return question
-
-        # Short answer — return as is
-        if any(kw in question.lower() for kw in short_keywords):
-            return question
-
-        # Check if proper question
-        question_words = [
-            "what", "how", "why", "when", "where",
-            "which", "explain", "describe", "define",
-            "draw", "show", "sketch", "diagram"
-        ]
-        is_proper_question = any(
-            question.lower().startswith(w) for w in question_words
-        ) or question.endswith("?")
-
-        if not is_proper_question:
-            return f"Explain {question} in detail"
-        return question
-    
-    def ask(self, question: str, top_k: int = 6, history: list = []) -> dict:
-        question = self.enhance_question(question)
-
-# For numerical problems — skip retrieval, use prompt formulas only
-        numerical_keywords = ["calculate", "find", "determine", "compute",
-                            "bore", "stroke", "rpm", "kpa", "kw", "efficiency"]
-        is_numerical = sum(1 for kw in numerical_keywords if kw in question.lower()) >= 3
-
-        if is_numerical:
-            docs = []
-            context = "Use the formulas provided in your instructions to solve this numerical problem step by step."
-        else:
-            retriever = self.vectorstore.as_retriever(
-                search_type="mmr",
-                search_kwargs={"k": top_k, "fetch_k": 20}
-            )
-            docs = retriever.invoke(question)
-            context = "\n\n".join(d.page_content for d in docs) if docs else "No context found."
-
-        if not docs:
-            return {
-                "answer": "No documents found. Please make sure ingest.py has been run.",
-                "sources": []
-            }
-
-        context = "\n\n".join(d.page_content for d in docs)
-
-        # Build history string from last 4 messages
-        history_text = ""
-        if history:
-            for msg in history[-4:]:
-                role = "Student" if msg["role"] == "user" else "Professor"
-                history_text += f"{role}: {msg['content']}\n"
-
-        prompt_value = self.prompt.format(
-            context=context,
-            question=question,
-            history=history_text
-        )
-        answer = self.llm.invoke(prompt_value).content
-
-        seen = set()
-        sources = []
-        for doc in docs:
-            filename = os.path.basename(
-                doc.metadata.get("source", "unknown")
-            )
-            page = doc.metadata.get("page", 0)
-            key = f"{filename}_{page}"
-            if key not in seen:
-                seen.add(key)
-                sources.append({
-                    "filename": filename,
-                    "page": page,
-                    "excerpt": doc.page_content[:250]
-                })
-
-        return {"answer": answer, "sources": sources}
-    def generate_quiz(self, topic: str, num_questions: int = 5) -> list:
-        """Generate quiz questions from course material"""
-        docs = self.vectorstore.similarity_search(topic, k=20)
-        context = "\n\n".join(d.page_content for d in docs)
-
-        # Use higher temperature for more creative and varied quiz questions
-        # quiz_llm = ChatGroq(
-        #     model="llama-3.3-70b-versatile",
-        #     temperature=0.4
-        # )
-
-        quiz_llm = ChatGroq(
-        model=self.current_model,
-        temperature=0.4
-        )
-        quiz_prompt = f"""You are an IC Engine professor creating a quiz.
-        Based on the context below, generate exactly {num_questions} multiple choice questions about {topic}.
-
-        Format each question EXACTLY like this (use @@@ as separator between questions):
-
-        Q1: [question text]
-        A) [option]
-        B) [option]
-        C) [option]
-        D) [option]
-        Answer: [correct letter]
-        Explanation: [brief explanation]
-
-        @@@
-
-        Q2: [question text]
-        A) [option]
-        B) [option]
-        C) [option]
-        D) [option]
-        Answer: [correct letter]
-        Explanation: [brief explanation]
-
-        @@@
-
-        Context:
-        {context}
-
-        Generate exactly {num_questions} questions now:"""
-
-        response = quiz_llm.invoke(quiz_prompt).content
-        return self.parse_quiz(response)
-
-    def parse_quiz(self, raw: str) -> list:
-        """Parse raw quiz text into structured questions"""
-        questions = []
-        blocks = raw.strip().split("@@@")
-        for block in blocks:
-            if "Answer:" in block:
-                lines = block.strip().split("\n")
-                q = {"question": "", "options": {}, "answer": "", "explanation": ""}
-                for line in lines:
-                    line = line.strip()
-                    if line and line[0] == "Q" and ":" in line:
-                        q["question"] = line.split(":", 1)[1].strip()
-                    elif line.startswith("A)"):
-                        q["options"]["A"] = line[2:].strip()
-                    elif line.startswith("B)"):
-                        q["options"]["B"] = line[2:].strip()
-                    elif line.startswith("C)"):
-                        q["options"]["C"] = line[2:].strip()
-                    elif line.startswith("D)"):
-                        q["options"]["D"] = line[2:].strip()
-                    elif line.startswith("Answer:"):
-                        q["answer"] = line.split(":", 1)[1].strip()
-                    elif line.startswith("Explanation:"):
-                        q["explanation"] = line.split(":", 1)[1].strip()
-                if q["question"] and q["options"]:
-                    questions.append(q)
-        return questions
-
-    def check_answer(self, question: dict, student_answer: str) -> dict:
-        """Check if student answer is correct"""
-        correct = question["answer"].upper().strip()
-        given = student_answer.upper().strip()
-        is_correct = given == correct
-        return {
-            "correct": is_correct,
-            "given": given,
-            "correct_answer": correct,
-            "explanation": question["explanation"]
-        }
-
-    def get_doc_count(self) -> int:
-        return self.vectorstore._collection.count()
-    
-    
-
-
-    # ─────────────────────────────────────────────────────────
-    # Smart RAG routing
-    # ─────────────────────────────────────────────────────────
-    def needs_rag(self, question: str) -> bool:
-        q = question.lower()
-        performance_keywords = [
-            "brake power", "indicated power", "friction power",
-            "bp", "ip", "fp", "bmep", "imep", "fmep",
-            "swept volume", "displacement", "volumetric efficiency",
-            "bsfc", "mechanical efficiency", "η_mech"
-        ]
-        if any(kw in q for kw in performance_keywords):
-            return False
-        cycle_keywords = [
-            "otto", "diesel", "brayton", "carnot", "cycle",
-            "thermal efficiency", "heat addition", "compression ratio",
-            "cutoff ratio", "pressure ratio", "t1", "t2", "t3", "t4"
-        ]
-        if any(kw in q for kw in cycle_keywords):
-            return True
-        return True
-
-    def _build_numerical_prompt(self, question: str, context: str = "") -> str:
-        context_block = f"\nRelevant examples from textbook:\n{context}\n" if context else ""
-        return f"{NUMERICAL_SYSTEM_PROMPT}{context_block}\nProblem: {question}"
-
-    def _stream_scout_numerical(self, question: str, context: str = ""):
-        """Use Llama 4 Scout with full numerical prompt — yields chunks."""
-        scout = ChatGroq(model="meta-llama/llama-4-scout-17b-16e-instruct", temperature=0)
-        full_prompt = self._build_numerical_prompt(question, context=context)
-        try:
-            for chunk in scout.stream(full_prompt):
-                yield chunk.content
-        except Exception as e:
-            if "429" in str(e) or "rate_limit" in str(e).lower():
-                fallback = ChatGroq(model="llama-3.1-8b-instant", temperature=0)
+def is_quiz_request(question: str):
+    patterns = [
+        r"ask me (\d+) questions? (?:on|about) (.+)",
+        r"quiz me (?:on|about) (.+)",
+        r"test me (?:on|about) (.+)",
+        r"(\d+) questions? (?:on|about) (.+)",
+        r"generate (\d+) questions? (?:on|about) (.+)",
+        r"take my quiz (?:on|about) (.+)",
+        r"give me a quiz (?:on|about) (.+)",
+        r"quiz on (.+)",
+        r"take my quiz on (.+)",
+        r"take (\d+) questions? quiz (?:on|about) (.+)",
+        r"(\d+) questions? quiz (?:on|about) (.+)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, question.lower())
+        if match:
+            groups = match.groups()
+            if len(groups) == 2:
                 try:
-                    for chunk in fallback.stream(full_prompt):
-                        yield chunk.content
-                except Exception:
-                    yield "All models are currently unavailable. Please try again later."
+                    return True, int(groups[0]), groups[1].strip()
+                except:
+                    return True, 5, groups[1].strip()
             else:
-                yield "An error occurred. Please try again."
+                return True, 5, groups[0].strip()
+    return False, 0, ""
 
+def render_message(msg):
+    if msg["role"] == "user":
+        text = msg["text"].replace('\n', '<br>')
+        st.markdown(f"""
+        <div class="user-bubble">
+          <div class="user-bubble-inner">{text}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        formatted_text = format_subscripts(msg["text"]).replace('\n', '<br>')
+        st.markdown(f"""
+        <div class="ai-bubble">
+          <div class="ai-bubble-inner">{formatted_text}</div>
+        </div>
+        """, unsafe_allow_html=True)
 
-    # ─────────────────────────────────────────────────────────
-    # Python executor — guaranteed exact arithmetic
-    # ─────────────────────────────────────────────────────────
-    def _execute_python_calculation(self, question: str) -> str:
-        """
-        Ask Scout to write Python code, execute it locally,
-        then ask Scout to format the result nicely.
-        Returns formatted answer string or None if failed.
-        """
-        import re, subprocess
+def render_quiz():
+    if not st.session_state.quiz_questions:
+        return
+    total = len(st.session_state.quiz_questions)
+    idx = st.session_state.quiz_index
 
-        # Step A: Ask Scout to write Python code only
-        code_prompt = f"""Write Python code to solve this IC Engine numerical problem.
+    if idx >= total:
+        score = st.session_state.quiz_score
+        pct = int(score / total * 100)
+        emoji = "🌟" if pct >= 80 else "📚" if pct >= 50 else "💪"
+        msg = "Excellent!" if pct >= 80 else "Good effort! Keep studying" if pct >= 50 else "Need more practice!"
+        st.markdown(f"""
+        <div class="quiz-box">
+        <b>Quiz Complete! 🎉</b><br><br>
+        Your Score: {score}/{total} ({pct}%)<br><br>
+        {emoji} {msg}
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("Start New Quiz"):
+            st.session_state.quiz_mode = False
+            st.session_state.quiz_questions = []
+            st.session_state.quiz_index = 0
+            st.session_state.quiz_score = 0
+            st.session_state.quiz_answered = False
+            st.rerun()
+        return
 
-STRICT RULES:
-- import math at the top
-- Use math.pi for pi
-- Keep imep/bmep in kPa — do NOT convert to Pa
-- For 4-stroke power: ip = imep * L * A * (N/2) * K / 60  (result in kW directly)
-- /60 appears ONCE at the very end — NEVER divide N by 60 separately first
-- Print each step with a label e.g. print(f"A = {{A:.6f}} m2")
-- Print final answers clearly e.g. print(f"ip = {{ip:.2f}} kW")
-- Output ONLY executable Python code — no explanation, no markdown
+    q = st.session_state.quiz_questions[idx]
+    st.markdown(f"""
+    <div class="quiz-box">
+    <b>Question {idx+1} of {total}</b><br><br>
+    {q['question']}
+    </div>
+    """, unsafe_allow_html=True)
 
-Problem: {question}"""
-
-        scout = ChatGroq(model="meta-llama/llama-4-scout-17b-16e-instruct", temperature=0)
-        try:
-            code_response = scout.invoke(code_prompt).content
-        except Exception as e:
-            print(f"[executor] Scout code generation failed: {e}")
-            return None
-
-        # Strip markdown code fences if present
-        match = re.search(r"```(?:python)?\n(.*?)```", code_response, re.DOTALL)
-        code = match.group(1) if match else code_response.strip()
-        print(f"[executor] Generated code:\n{code[:400]}")
-
-        # Step B: Execute the Python code
-        try:
-            result = subprocess.run(
-                ["python3", "-c", code],
-                capture_output=True, text=True, timeout=15
-            )
-            output = result.stdout.strip()
-            error  = result.stderr.strip()
-
-            if error and not output:
-                print(f"[executor] Python error: {error}")
-                return None
-            if not output:
-                print("[executor] No output produced")
-                return None
-
-            print(f"[executor] Output: {output}")
-
-        except subprocess.TimeoutExpired:
-            print("[executor] Timed out")
-            return None
-        except Exception as e:
-            print(f"[executor] Run error: {e}")
-            return None
-
-        # Step C: Ask Scout to present the results clearly
-        format_prompt = f"""You are an IC Engine professor presenting a solved problem.
-
-Student question: {question}
-
-Python calculated these exact values:
-{output}
-
-Present a clean step-by-step solution:
-- State each formula used
-- Show substitution with actual values
-- Show the result of each step
-- Give final answers with units
-- Add a short verification checklist
-
-Rules: plain text only, no LaTeX, no markdown math.
-Use: T_2, η_th, i_p, b_p, f_p notation."""
-
-        try:
-            formatted = scout.invoke(format_prompt).content
-            return formatted
-        except Exception:
-            return f"Results:\n{output}"
-
-    def is_numerical_question(self, question: str) -> bool:
-        """Detect if question is a numerical problem requiring calculation"""
-        numerical_keywords = [
-            "calculate", "find", "determine", "compute",
-            "bore", "stroke", "rpm", "kpa", "kw",
-            "efficiency", "pressure", "temperature", "power",
-            "volume", "cylinder", "piston", "ratio"
-        ]
-        count = sum(1 for kw in numerical_keywords if kw in question.lower())
-        # Also check if question has numbers with units
-        import re
-        has_numbers = bool(re.search(r'\d+\s*(mm|kpa|rpm|kw|kj|kg|bar|cc|m)', question.lower()))
-        return count >= 3 or (count >= 2 and has_numbers)
-
-    def ask_stream(self, question: str, top_k: int = 10, history: list = []):
-        """Generator that yields answer chunks as they arrive"""
-        question = self.enhance_question(question, history)
-
-        # ── Numerical question path ──────────────────────────
-        if self.is_numerical_question(question):
-
-            # Retrieve relevant chunks so model sees worked examples from textbook
-            retriever = self.vectorstore.as_retriever(
-                search_type="mmr",
-                search_kwargs={"k": 6, "fetch_k": 20}
-            )
-            num_docs = retriever.invoke(question)
-            num_context = "\n\n".join(d.page_content for d in num_docs) if num_docs else ""
-
-            # Step 1: Try compound-mini (has built-in Python executor)
-            compound_success = False
-            try:
-                from groq import Groq as GroqClient
-                client = GroqClient(api_key=os.getenv("GROQ_API_KEY"))
-                numerical_prompt = self._build_numerical_prompt(question, context=num_context)
-                numerical_prompt += "\n\nIMPORTANT: You MUST write and execute Python code. Do not solve manually."
-                response = client.chat.completions.create(
-                    model="groq/compound-mini",
-                    messages=[{"role": "user", "content": numerical_prompt}],
-                    max_tokens=2000
-                )
-                msg = response.choices[0].message
-                answer = msg.content or ""
-                if not answer:
-                    answer = getattr(msg, "reasoning", "") or ""
-                if not answer:
-                    raise Exception("Empty response from compound-mini")
-
-                # Clean LaTeX from compound-mini output
-                import re as _re
-                answer = _re.sub(r'\\\[|\\\]', '\n', answer)
-                answer = _re.sub(r'\\\(|\\\)', '', answer)
-                answer = _re.sub(r'\\boxed\{([^}]*)\}', r'\1', answer)
-                answer = _re.sub(r'\\frac\{([^}]*)\}\{([^}]*)\}', r'(\1/\2)', answer)
-                answer = _re.sub(r'\\text\{([^}]*)\}', r'\1', answer)
-                answer = _re.sub(r'\\begin\{[^}]*\}|\\end\{[^}]*\}', '', answer)
-                answer = _re.sub(r'\\mathbf\{([^}]*)\}', r'\1', answer)
-                answer = _re.sub(r'\\;|\\,|\\!|\\quad|\\qquad', ' ', answer)
-                answer = answer.replace('\\times','×').replace('\\eta','η').replace('\\pi','π')
-                answer = _re.sub(r'\\[a-zA-Z]+\s?', '', answer)
-                answer = _re.sub(r'\d+\.\d{7,}', lambda m: str(round(float(m.group()), 4)), answer)
-
-                words = answer.split(" ")
-                for i, word in enumerate(words):
-                    yield word + (" " if i < len(words) - 1 else "")
-                compound_success = True
-                print("[compound-mini] succeeded")
-
-            except Exception as e:
-                print(f"[compound-mini] failed: {e} — trying Python executor")
-
-            # Step 2: Python executor — guaranteed exact arithmetic
-            if not compound_success:
-                print("[executor] attempting local Python execution")
-                result = self._execute_python_calculation(question)
-                if result:
-                    words = result.split(" ")
-                    for i, word in enumerate(words):
-                        yield word + (" " if i < len(words) - 1 else "")
-                    return
-
-            # Step 3: Last resort — Scout with full numerical prompt
-            if not compound_success:
-                print("[Scout fallback] using Scout with numerical prompt")
-                yield from self._stream_scout_numerical(question, context=num_context)
-
-            return
-
-        # ── Conceptual question path (RAG) ───────────────────
-        use_rag = self.needs_rag(question)
-        if use_rag:
-            retriever = self.vectorstore.as_retriever(
-                search_type="mmr",
-                search_kwargs={"k": top_k, "fetch_k": 20}
-            )
-            docs = retriever.invoke(question)
+    if not st.session_state.quiz_answered:
+        cols = st.columns(2)
+        options = q.get("options", {})
+        for i, (letter, option) in enumerate(options.items()):
+            with cols[i % 2]:
+                if st.button(f"{letter}) {option}", key=f"opt_{idx}_{letter}"):
+                    correct = q["answer"].upper().strip()[0] if q["answer"].strip() else ""
+                    given = letter.upper()
+                    is_correct = given == correct
+                    if is_correct:
+                        st.session_state.quiz_score += 1
+                    st.session_state.last_result = {
+                        "correct": is_correct,
+                        "given": given,
+                        "correct_answer": correct,
+                        "explanation": q.get("explanation", "")
+                    }
+                    st.session_state.quiz_answered = True
+                    st.rerun()
+    else:
+        result = st.session_state.last_result
+        if result["correct"]:
+            st.markdown('<div class="quiz-correct">✅ Correct!</div>', unsafe_allow_html=True)
         else:
-            docs = []
+            st.markdown(
+                f'<div class="quiz-wrong">❌ Wrong! Correct answer: {result["correct_answer"]}</div>',
+                unsafe_allow_html=True
+            )
+        if result["explanation"]:
+            st.markdown(
+                f'<div class="quiz-explanation">💡 {result["explanation"]}</div>',
+                unsafe_allow_html=True
+            )
+        if st.button("Next Question ➤"):
+            st.session_state.quiz_index += 1
+            st.session_state.quiz_answered = False
+            st.rerun()
 
-        if use_rag and not docs:
-            yield "No documents found in the database."
-            return
+# ── Main chat area ────────────────────────────────────────────────────────────
+if len(st.session_state.messages) == 0 and not st.session_state.quiz_mode:
+    st.markdown("""
+    <div class="empty-state">
+      <span class="empty-icon">⚙️</span>
+      <div class="empty-title">Ask anything about IC Engines</div>
+      <div class="empty-subtitle">
+        Answers sourced directly from your course documents.
+        Say "ask me 5 questions on SI engine" to start a quiz!
+      </div>
+    </div>
+    <div class="sugg-title">SUGGESTED QUESTIONS</div>
+    """, unsafe_allow_html=True)
 
-        context = "\n\n".join(d.page_content for d in docs) if docs else                   "Use the formulas provided in your instructions to solve this problem."
+    suggested_questions = [
+        "What is compression ratio?",
+        "Explain the 4-stroke diesel cycle",
+        "How does turbocharging work?",
+        "Difference between SI and CI engines",
+        "What is volumetric efficiency?",
+        "Ask me 5 questions on SI engine",
+    ]
 
-        history_text = ""
-        if history:
-            for msg in history[-4:]:
-                role = "Student" if msg["role"] == "user" else "Professor"
-                history_text += f"{role}: {msg['content']}\n"
+    cols = st.columns(2)
+    for i, q in enumerate(suggested_questions):
+        with cols[i % 2]:
+            st.markdown('<div class="sugg-btn">', unsafe_allow_html=True)
+            if st.button(q, key=f"sugg_{i}", use_container_width=True):
+                st.session_state.suggested = q
+            st.markdown('</div>', unsafe_allow_html=True)
 
-        prompt_value = self.prompt.format(
-            context=context,
-            question=question,
-            history=history_text
-        )
+else:
+    for msg in st.session_state.messages:
+        render_message(msg)
 
-        def is_rate_limit(e):
-            msg = str(e).lower()
-            return any(k in msg for k in ["429", "rate_limit", "quota", "resource_exhausted", "resourceexhausted"])
+    if st.session_state.quiz_mode:
+        render_quiz()
 
-        def stream_llm(llm, prompt):
-            for chunk in llm.stream(prompt):
-                text = chunk.content
-                if text:
-                    yield text
+    _, _, col3 = st.columns([4, 1, 1])
+    with col3:
+        if st.button("🗑 Clear", use_container_width=True):
+            st.session_state.messages = []
+            st.session_state.quiz_mode = False
+            st.session_state.quiz_questions = []
+            st.session_state.quiz_index = 0
+            st.session_state.quiz_score = 0
+            st.session_state.quiz_answered = False
+            st.rerun()
 
-        try:
-            total_chars = 0
-            for text in stream_llm(self.llm, prompt_value):
-                total_chars += len(text)
-                yield text
-            token_stats["used"] += len(prompt_value) // 4 + total_chars // 4
+# ── Handle suggested click ────────────────────────────────────────────────────
+if st.session_state.suggested:
+    question = st.session_state.suggested
+    st.session_state.suggested = None
 
-        except Exception as e:
-            if is_rate_limit(e):
-                if self.current_model == "llama-3.3-70b-versatile":
-                    print("Rate limit hit — switching to Llama 4 Scout automatically")
-                    self.switch_model("meta-llama/llama-4-scout-17b-16e-instruct")
-                    try:
-                        yield from stream_llm(self.llm, prompt_value)
-                    except Exception as e2:
-                        if is_rate_limit(e2):
-                            self.switch_model("llama-3.1-8b-instant")
-                            try:
-                                yield from stream_llm(self.llm, prompt_value)
-                            except Exception:
-                                yield "All models are currently unavailable. Please try again later."
-                        else:
-                            yield "An error occurred. Please try again."
-                elif self.current_model == "meta-llama/llama-4-scout-17b-16e-instruct":
-                    print("Rate limit hit — switching to 8B model automatically")
-                    self.switch_model("llama-3.1-8b-instant")
-                    try:
-                        yield from stream_llm(self.llm, prompt_value)
-                    except Exception:
-                        yield "All models are currently unavailable. Please try again later."
+    is_quiz, num_q, topic = is_quiz_request(question)
+    if is_quiz:
+        st.session_state.messages.append({"role": "user", "text": question})
+        with st.spinner(f"Generating {num_q} questions on {topic}..."):
+            data, err = call_quiz_api(topic, num_q)
+        if err:
+            st.markdown(f'<div class="error-box">⚠ {err}</div>', unsafe_allow_html=True)
+            st.session_state.messages.pop()
+        else:
+            st.session_state.quiz_questions = data["questions"]
+            st.session_state.quiz_index = 0
+            st.session_state.quiz_score = 0
+            st.session_state.quiz_answered = False
+            st.session_state.quiz_mode = True
+            st.session_state.messages.append({
+                "role": "ai",
+                "text": f"Starting quiz on '{topic}'! {len(data['questions'])} questions ready. Good luck! 🎯",
+                "sources": []
+            })
+        st.rerun()
+    else:
+        history = build_history()
+        st.session_state.messages.append({"role": "user", "text": question})
+        res, err = call_api(question, history=history)
+        if err:
+            st.markdown(f'<div class="error-box">⚠ {err}</div>', unsafe_allow_html=True)
+            st.session_state.messages.pop()
+        else:
+            placeholder = st.empty()
+            placeholder.markdown('''<div style="display:flex;align-items:center;gap:6px;padding:4px 0"><span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#6b7a6b;">Thinking</span><span style="display:inline-flex;gap:3px"><span style="width:5px;height:5px;border-radius:50%;background:#4ade80;animation:dot-pulse 1.2s infinite;animation-delay:0s"></span><span style="width:5px;height:5px;border-radius:50%;background:#4ade80;animation:dot-pulse 1.2s infinite;animation-delay:0.2s"></span><span style="width:5px;height:5px;border-radius:50%;background:#4ade80;animation:dot-pulse 1.2s infinite;animation-delay:0.4s"></span></span></div><style>@keyframes dot-pulse{0%,80%,100%{opacity:0.2;transform:scale(0.8)}40%{opacity:1;transform:scale(1)}}</style>''', unsafe_allow_html=True)
+            full_answer = ""
+            try:
+                for chunk in res.iter_content(chunk_size=None, decode_unicode=True):
+                    if chunk:
+                        full_answer += chunk
+                        display_text = format_subscripts(full_answer).replace('\n', '<br>')
+                        placeholder.markdown(display_text + "▌", unsafe_allow_html=True)
+            except Exception:
+                pass
+            finally:
+                if full_answer:
+                    display_text = format_subscripts(full_answer).replace('\n', '<br>')
+                    placeholder.markdown(display_text, unsafe_allow_html=True)
                 else:
-                    yield "All models are currently unavailable. Please try again later."
+                    placeholder.markdown("Connection dropped. Please try again.", unsafe_allow_html=True)
+            st.session_state.messages.append({
+                "role": "ai",
+                "text": full_answer,
+                "sources": []
+            })
+        st.rerun()
+
+# ── Input area ────────────────────────────────────────────────────────────────
+st.markdown("<hr>", unsafe_allow_html=True)
+
+st.markdown("""
+<script>
+(function() {
+    function autoGrow() {
+        var textareas = window.parent.document.querySelectorAll('.stTextArea textarea');
+        textareas.forEach(function(ta) {
+            if (!ta.dataset.autoGrow) {
+                ta.dataset.autoGrow = 'true';
+                ta.addEventListener('input', function() {
+                    this.style.height = 'auto';
+                    this.style.height = Math.min(this.scrollHeight, 300) + 'px';
+                });
+            }
+        });
+    }
+    setTimeout(autoGrow, 600);
+    setTimeout(autoGrow, 1500);
+    setTimeout(autoGrow, 3000);
+})();
+</script>
+""", unsafe_allow_html=True)
+
+with st.form("chat_form", clear_on_submit=True):
+    col1, col2 = st.columns([5, 1])
+    with col1:
+        user_input = st.text_area(
+            label="question",
+            placeholder="Ask a question or say 'ask me 5 questions on SI engine'...",
+            label_visibility="collapsed",
+            height=None,
+            key="input_area"
+        )
+    with col2:
+        st.markdown("<div style='padding-top:20px'>", unsafe_allow_html=True)
+        submitted = st.form_submit_button("SEND ➤", use_container_width=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+st.markdown("""
+<div style="text-align:center;font-size:10px;color:#4b5563;
+font-family:'IBM Plex Mono',monospace;letter-spacing:0.05em;margin-top:4px;">
+CTRL+ENTER TO SEND &nbsp;|&nbsp; ⚠️ AI can make mistakes — always verify numerical answers
+</div>
+""", unsafe_allow_html=True)
+
+# ── Process question ──────────────────────────────────────────────────────────
+if submitted and user_input.strip():
+    st.session_state.input_counter += 1
+    question = user_input.strip()
+    if len(question) < 5:
+        st.markdown('<div class="error-box">⚠ Question is too short</div>', unsafe_allow_html=True)
+    elif len(question) > 1000:
+        st.markdown('<div class="error-box">⚠ Question is too long — maximum 1000 characters</div>', unsafe_allow_html=True)
+    else:
+        is_quiz, num_q, topic = is_quiz_request(question)
+
+        if is_quiz:
+            st.session_state.messages.append({"role": "user", "text": question})
+            with st.spinner(f"Generating {num_q} questions on {topic}..."):
+                data, err = call_quiz_api(topic, num_q)
+            if err:
+                st.markdown(f'<div class="error-box">⚠ {err}</div>', unsafe_allow_html=True)
+                st.session_state.messages.pop()
             else:
-                print(f"Streaming error | model={self.current_model} | error={str(e)}")
-                yield f"Error: {str(e)}"
-
-
-rag = RAGEngine()
+                st.session_state.quiz_questions = data["questions"]
+                st.session_state.quiz_index = 0
+                st.session_state.quiz_score = 0
+                st.session_state.quiz_answered = False
+                st.session_state.quiz_mode = True
+                st.session_state.messages.append({
+                    "role": "ai",
+                    "text": f"Starting quiz on '{topic}'! {len(data['questions'])} questions ready. Good luck! 🎯",
+                    "sources": []
+                })
+            st.rerun()
+        else:
+            history = build_history()
+            st.session_state.messages.append({"role": "user", "text": question})
+            res, err = call_api(question, history=history)
+            if err:
+                st.markdown(f'<div class="error-box">⚠ {err}</div>', unsafe_allow_html=True)
+                st.session_state.messages.pop()
+            else:
+                placeholder = st.empty()
+                placeholder.markdown('''<div style="display:flex;align-items:center;gap:6px;padding:4px 0"><span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#6b7a6b;">Thinking</span><span style="display:inline-flex;gap:3px"><span style="width:5px;height:5px;border-radius:50%;background:#4ade80;animation:dot-pulse 1.2s infinite;animation-delay:0s"></span><span style="width:5px;height:5px;border-radius:50%;background:#4ade80;animation:dot-pulse 1.2s infinite;animation-delay:0.2s"></span><span style="width:5px;height:5px;border-radius:50%;background:#4ade80;animation:dot-pulse 1.2s infinite;animation-delay:0.4s"></span></span></div><style>@keyframes dot-pulse{0%,80%,100%{opacity:0.2;transform:scale(0.8)}40%{opacity:1;transform:scale(1)}}</style>''', unsafe_allow_html=True)
+                full_answer = ""
+                try:
+                    for chunk in res.iter_content(chunk_size=None, decode_unicode=True):
+                        if chunk:
+                            full_answer += chunk
+                            display_text = format_subscripts(full_answer).replace('\n', '<br>')
+                            placeholder.markdown(display_text + "▌", unsafe_allow_html=True)
+                except Exception:
+                    pass
+                finally:
+                    if full_answer:
+                        display_text = format_subscripts(full_answer).replace('\n', '<br>')
+                        placeholder.markdown(display_text, unsafe_allow_html=True)
+                    else:
+                        placeholder.markdown("Connection dropped. Please try again.", unsafe_allow_html=True)
+                st.session_state.messages.append({
+                    "role": "ai",
+                    "text": full_answer,
+                    "sources": []
+                })
+            st.rerun()
