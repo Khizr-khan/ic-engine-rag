@@ -110,6 +110,7 @@ Response:
 
 CRITICAL REMINDERS:
   • /60 is MANDATORY in power formulas — converts per minute to per second
+  • Keep imep/bmep in kPa — do NOT convert to Pa. kPa × m² × m = kJ, /60 gives kW directly
   • Diesel Q_in uses Cp = γ × Cv (constant pressure), NOT Cv
   • Diesel T_4 = T_3 × (rc/r)^(γ-1) — NOT T_3 × (1/r)^(γ-1)
   • Brayton cycle exponent is (γ-1)/γ = 0.2857, NOT γ-1 = 0.4
@@ -257,6 +258,11 @@ CRITICAL RULES:
 - A = π/4 × d²  — keep ALL decimal places, do NOT round A early
 - ip  = imep × L × A × (N/2) × K / 60   (kW)
 - bp  = bmep × L × A × (N/2) × K / 60   (kW)
+- CRITICAL: keep imep/bmep in kPa — do NOT convert to Pa
+  If imep is in kPa and L in m and A in m², result is directly in kW
+  Converting to Pa will make answer 1000× too large
+- Example: 900 kPa × 0.11m × 0.006362m² × 1250 × 6 / 60 = 78.73 kW ✓
+           900000 Pa × same = 78730 W = 78.73 kW (only correct if you then divide by 1000)
 - fp  = ip - bp
 - η_mech = bp / ip
 - /60 is MANDATORY — converts per-minute to per-second
