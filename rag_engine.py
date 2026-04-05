@@ -591,30 +591,38 @@ class RAGEngine:
             history=history_text
         )
 
-        # Stream with auto model switching on rate limit
+# Stream with auto model switching on rate limit
+        def is_rate_limit(e):
+            msg = str(e).lower()
+            return any(k in msg for k in ["429", "rate_limit", "quota", "resource_exhausted", "resourceexhausted"])
+
+        def stream_llm(llm, prompt):
+            """Stream from any LLM — handles None chunks from Google models."""
+            for chunk in llm.stream(prompt):
+                text = chunk.content
+                if text:
+                    yield text
+
         try:
             total_chars = 0
-            for chunk in self.llm.stream(prompt_value):
-                content = chunk.content
-                total_chars += len(content)
-                yield content
+            for text in stream_llm(self.llm, prompt_value):
+                total_chars += len(text)
+                yield text
             # Rough token estimate (4 chars ≈ 1 token)
             token_stats["used"] += len(prompt_value) // 4 + total_chars // 4
 
         except Exception as e:
-            if "429" in str(e) or "rate_limit" in str(e).lower():
+            if is_rate_limit(e):
                 if self.current_model == "llama-3.3-70b-versatile":
                     print("Rate limit hit — switching to Llama 4 Scout automatically")
                     self.switch_model("meta-llama/llama-4-scout-17b-16e-instruct")
                     try:
-                        for chunk in self.llm.stream(prompt_value):
-                            yield chunk.content
+                        yield from stream_llm(self.llm, prompt_value)
                     except Exception as e2:
-                        if "429" in str(e2) or "rate_limit" in str(e2).lower():
+                        if is_rate_limit(e2):
                             self.switch_model("llama-3.1-8b-instant")
                             try:
-                                for chunk in self.llm.stream(prompt_value):
-                                    yield chunk.content
+                                yield from stream_llm(self.llm, prompt_value)
                             except Exception:
                                 yield "All models are currently unavailable. Please try again later."
                         else:
@@ -624,15 +632,14 @@ class RAGEngine:
                     print("Rate limit hit — switching to 8B model automatically")
                     self.switch_model("llama-3.1-8b-instant")
                     try:
-                        for chunk in self.llm.stream(prompt_value):
-                            yield chunk.content
+                        yield from stream_llm(self.llm, prompt_value)
                     except Exception:
                         yield "All models are currently unavailable. Please try again later."
                 else:
                     yield "All models are currently unavailable. Please try again later."
             else:
+                print(f"Streaming error: {str(e)}")
                 yield "An error occurred. Please try again."
-
     # ─────────────────────────────────────────────────────────
     # Quiz generation
     # ─────────────────────────────────────────────────────────
