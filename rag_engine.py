@@ -622,10 +622,23 @@ class RAGEngine:
                     max_tokens=2000
                 )
                 msg = response.choices[0].message
+                print(f"compound-mini raw msg: {msg}")
+                print(f"compound-mini content: {msg.content}")
+                print(f"compound-mini model_fields: {msg.model_fields_set}")
+                
                 answer = msg.content or ""
                 if not answer:
                     answer = getattr(msg, "reasoning", "") or ""
                 if not answer:
+                    # Check all attributes
+                    for attr in ["tool_calls", "function_call", "refusal", "audio"]:
+                        val = getattr(msg, attr, None)
+                        if val:
+                            print(f"compound-mini {attr}: {val}")
+                            answer = str(val)
+                            break
+                if not answer:
+                    print("compound-mini returned empty — falling to Scout")
                     raise Exception("Empty response from compound-mini")
                 words = answer.split(" ")
                 for i, word in enumerate(words):
