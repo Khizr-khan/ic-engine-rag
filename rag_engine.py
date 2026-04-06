@@ -610,29 +610,40 @@ class RAGEngine:
 STRICT RULES:
 - import math at the top
 - Use math.pi for pi
+- gamma = 1.4 always — NEVER derive from r or any other value
+- Cp = gamma * Cv = 1.4 * Cv — NEVER derive Cp from r or r/(r-1)
+
+ENGINE PERFORMANCE:
 - Keep imep/bmep in kPa — do NOT convert to Pa
-- For 4-stroke power: ip = imep * L * A * (N/2) * K / 60  (result in kW directly)
-- /60 appears ONCE at the very end — NEVER divide N by 60 separately first
+- ip = imep * L * A * (N/2) * K / 60  (kW directly)
+- /60 appears ONCE at the very end — NEVER divide N by 60 separately
+- bp = mechanical_efficiency * ip
 - fp = ip - bp  (fp is POWER in kW — NOT pressure, NEVER in kPa)
-- bp = mechanical_efficiency * ip  (if mechanical efficiency given)
-- gamma = 1.4 always (ratio of specific heats for air)
-- Cp = gamma * Cv = 1.4 * Cv  (NEVER derive Cp from r)
-- Otto efficiency: eta = 1 - (1 / (r ** 0.4))  NOT 1 - (1 / r**(0.4-1))
-- Diesel T2 = T1 * (r ** 0.4)
-- Diesel T3 = T2 * rc
-- Diesel T4 = T3 * ((rc/r) ** 0.4)
-- Diesel Qin = Cp * (T3 - T2)  use Cp NOT Cv
-- Diesel Qout = Cv * (T4 - T1)
-- Print each step with a label e.g. print(f"A = {{A:.6f}} m2")
-- Print final answers: print(f"ip = {{ip:.2f}} kW"), print(f"bp = {{bp:.2f}} kW"), print(f"fp = {{fp:.2f}} kW")
-- gamma = 1.4 always (ratio of specific heats for air) — NEVER derive from r or other values
-- Cp = gamma * Cv = 1.4 * Cv  (NEVER derive Cp from r or from r/(r-1))
-- Otto efficiency: eta = 1 - (1 / (r ** 0.4))  NOT 1 - (1 / r**(0.4-1))
-- Diesel T2 = T1 * (r ** 0.4)
-- Diesel T3 = T2 * rc  (constant pressure — just multiply by cutoff ratio)
-- Diesel T4 = T3 * ((rc/r) ** 0.4)  NOT T3 * (1/r)**0.4
-- Diesel Qin = Cp * (T3 - T2)  use Cp NOT Cv
-- Diesel Qout = Cv * (T4 - T1)
+
+OTTO CYCLE:
+- T2 = T1 * (r ** 0.4)
+- T3 = T2 + Qin / Cv
+- T4 = T3 / (r ** 0.4)
+- eta = 1 - (1 / (r ** 0.4))  NOT 1 - (1 / r**(0.4-1))
+
+DIESEL CYCLE:
+- T2 = T1 * (r ** 0.4)
+- T3 = T2 * rc  (constant pressure — just multiply by cutoff ratio)
+- T4 = T3 * ((rc/r) ** 0.4)  NOT T3 * (1/r)**0.4
+- Qin = Cp * (T3 - T2)  use Cp NOT Cv
+- Qout = Cv * (T4 - T1)
+
+BRAYTON CYCLE:
+- T2 = T1 * (r ** ((gamma-1)/gamma))  ← brackets around entire exponent
+- T4 = T3 / (r ** ((gamma-1)/gamma))  ← same
+- NEVER write r**(gamma-1)/gamma — Python computes as (r**(gamma-1))/gamma WRONG
+- Qin = Cp * (T3 - T2)
+- Qout = Cp * (T4 - T1)
+- eta = 1 - 1/(r**((gamma-1)/gamma))
+
+PRINTING:
+- Print each step with a label e.g. print(f"T2 = {{T2:.2f}} K")
+- Print final answers with units e.g. print(f"ip = {{ip:.2f}} kW")
 - Output ONLY executable Python code — no explanation, no markdown
 
 Problem: {question}"""
