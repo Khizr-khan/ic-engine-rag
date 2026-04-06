@@ -386,7 +386,6 @@ class RAGEngine:
         ) or question.endswith("?")
 
         if not is_proper_question:
-            # Don't add "Explain" if question has numbers — it's numerical
             if self.is_numerical_question(question):
                 return question
             return f"Explain {question} in detail"
