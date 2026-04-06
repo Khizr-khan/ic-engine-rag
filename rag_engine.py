@@ -714,12 +714,14 @@ Use: T_2, η_th, i_p, b_p, f_p notation."""
             "calculate", "find", "determine", "compute",
             "bore", "stroke", "rpm", "kpa", "kw",
             "efficiency", "pressure", "temperature", "power",
-            "volume", "cylinder", "piston", "ratio"
+            "volume", "cylinder", "piston", "ratio",
+            "r=", "rc=", "t1=", "t2=", "t3=", "t4=",
+            "qin", "wnet", "cv=", "cp="
         ]
         count = sum(1 for kw in numerical_keywords if kw in question.lower())
         # Also check if question has numbers with units
         import re
-        has_numbers = bool(re.search(r'\d+\s*(mm|kpa|rpm|kw|kj|kg|bar|cc|m)', question.lower()))
+        has_numbers = bool(re.search(r'\d+\s*(mm|kpa|rpm|kw|kj|kg|bar|cc|k\b|m\b)', question.lower()))
         return count >= 3 or (count >= 2 and has_numbers)
 
     def ask_stream(self, question: str, top_k: int = 10, history: list = []):
