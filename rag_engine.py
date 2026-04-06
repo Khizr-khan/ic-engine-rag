@@ -554,11 +554,10 @@ class RAGEngine:
             "swept volume", "displacement",
             "bsfc", "mechanical efficiency", "η_mech"
         ]
-        # Only skip RAG if it's a numerical calculation not a conceptual question
         if any(kw in q for kw in performance_keywords):
             if any(num in q for num in ["mm", "rpm", "kpa", "kw", "bore", "stroke"]):
-                return False  # numerical performance — skip RAG
-            return True  # conceptual performance — use RAG
+                return False
+            return True
         cycle_keywords = [
             "otto", "diesel", "brayton", "carnot", "cycle",
             "thermal efficiency", "heat addition", "compression ratio",
@@ -633,8 +632,8 @@ DIESEL CYCLE:
 - Qout = Cv * (T4 - T1)
 
 BRAYTON CYCLE:
-- T2 = T1 * (r ** ((gamma-1)/gamma))  ← brackets around entire exponent
-- T4 = T3 / (r ** ((gamma-1)/gamma))  ← same
+- T2 = T1 * (r ** ((gamma-1)/gamma))  brackets around entire exponent
+- T4 = T3 / (r ** ((gamma-1)/gamma))  same
 - NEVER write r**(gamma-1)/gamma — Python computes as (r**(gamma-1))/gamma WRONG
 - Qin = Cp * (T3 - T2)
 - Qout = Cp * (T4 - T1)
