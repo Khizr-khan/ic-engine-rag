@@ -5,7 +5,6 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.prompts import PromptTemplate
 from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
 
 load_dotenv()
 
@@ -571,6 +570,7 @@ class RAGEngine:
         """Use Llama 4 Scout with full numerical prompt — yields chunks."""
         scout = ChatGroq(model="meta-llama/llama-4-scout-17b-16e-instruct", temperature=0)
         full_prompt = self._build_numerical_prompt(question, context=context)
+        print(f"[ROUTING] → Tier 3 Scout fallback for numerical")
         try:
             for chunk in scout.stream(full_prompt):
                 yield chunk.content
@@ -613,6 +613,7 @@ STRICT RULES:
 Problem: {question}"""
 
         scout = ChatGroq(model="meta-llama/llama-4-scout-17b-16e-instruct", temperature=0)
+        print(f"[ROUTING] → Tier 2 Python executor: Scout writing code")
         try:
             code_response = scout.invoke(code_prompt).content
         except Exception as e:
@@ -690,6 +691,9 @@ Use: T_2, η_th, i_p, b_p, f_p notation."""
     def ask_stream(self, question: str, top_k: int = 10, history: list = []):
         """Generator that yields answer chunks as they arrive"""
         question = self.enhance_question(question, history)
+        print(f"[ROUTING] question='{question[:60]}'")
+        print(f"[ROUTING] is_numerical={self.is_numerical_question(question)}")
+        print(f"[ROUTING] current_model={self.current_model}")
 
         # ── Numerical question path ──────────────────────────
         if self.is_numerical_question(question):
@@ -708,7 +712,7 @@ Use: T_2, η_th, i_p, b_p, f_p notation."""
                 from groq import Groq as GroqClient
                 client = GroqClient(api_key=os.getenv("GROQ_API_KEY"))
                 numerical_prompt = self._build_numerical_prompt(question, context=num_context)
-                numerical_prompt += "\n\nIMPORTANT: You MUST write and execute Python code. Do not solve manually."
+                numerical_prompt += "\n\nIMPORTANT: Use the code execution tool ONLY — do NOT use web search. Write and run Python code to compute the exact answer."
                 response = client.chat.completions.create(
                     model="groq/compound-mini",
                     messages=[{"role": "user", "content": numerical_prompt}],
@@ -763,6 +767,8 @@ Use: T_2, η_th, i_p, b_p, f_p notation."""
 
         # ── Conceptual question path (RAG) ───────────────────
         use_rag = self.needs_rag(question)
+        print(f"[ROUTING] use_rag={use_rag}")
+        print(f"[ROUTING] → conceptual path using model={self.current_model}")
         if use_rag:
             retriever = self.vectorstore.as_retriever(
                 search_type="mmr",
@@ -810,7 +816,7 @@ Use: T_2, η_th, i_p, b_p, f_p notation."""
         except Exception as e:
             if is_rate_limit(e):
                 if self.current_model == "llama-3.3-70b-versatile":
-                    print("Rate limit hit — switching to Llama 4 Scout automatically")
+                    print("[ROUTING] Rate limit hit — switching to Llama 4 Scout automatically")
                     self.switch_model("meta-llama/llama-4-scout-17b-16e-instruct")
                     try:
                         yield from stream_llm(self.llm, prompt_value)
