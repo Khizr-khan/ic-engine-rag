@@ -700,7 +700,9 @@ Present a clean step-by-step solution:
 - Add a short verification checklist
 
 FORMATTING RULES:
-- Plain text only — no LaTeX, no markdown
+Rules: plain text only, no LaTeX, no markdown math.
+Use: T_2, η_th, i_p, b_p, f_p notation.
+CRITICAL: Power values must be in kW — if Python printed kW keep as kW, never convert to W or multiply by 1000.
 - NO ## headers, NO ### headers, NO ** bold **
 - NO markdown of any kind
 - Use plain numbered steps: 1. 2. 3.
