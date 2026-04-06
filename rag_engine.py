@@ -552,11 +552,14 @@ class RAGEngine:
         performance_keywords = [
             "brake power", "indicated power", "friction power",
             "bp", "ip", "fp", "bmep", "imep", "fmep",
-            "swept volume", "displacement", "volumetric efficiency",
+            "swept volume", "displacement",
             "bsfc", "mechanical efficiency", "η_mech"
         ]
+        # Only skip RAG if it's a numerical calculation not a conceptual question
         if any(kw in q for kw in performance_keywords):
-            return False
+            if any(num in q for num in ["mm", "rpm", "kpa", "kw", "bore", "stroke"]):
+                return False  # numerical performance — skip RAG
+            return True  # conceptual performance — use RAG
         cycle_keywords = [
             "otto", "diesel", "brayton", "carnot", "cycle",
             "thermal efficiency", "heat addition", "compression ratio",
@@ -612,8 +615,24 @@ STRICT RULES:
 - /60 appears ONCE at the very end — NEVER divide N by 60 separately first
 - fp = ip - bp  (fp is POWER in kW — NOT pressure, NEVER in kPa)
 - bp = mechanical_efficiency * ip  (if mechanical efficiency given)
+- gamma = 1.4 always (ratio of specific heats for air)
+- Cp = gamma * Cv = 1.4 * Cv  (NEVER derive Cp from r)
+- Otto efficiency: eta = 1 - (1 / (r ** 0.4))  NOT 1 - (1 / r**(0.4-1))
+- Diesel T2 = T1 * (r ** 0.4)
+- Diesel T3 = T2 * rc
+- Diesel T4 = T3 * ((rc/r) ** 0.4)
+- Diesel Qin = Cp * (T3 - T2)  use Cp NOT Cv
+- Diesel Qout = Cv * (T4 - T1)
 - Print each step with a label e.g. print(f"A = {{A:.6f}} m2")
 - Print final answers: print(f"ip = {{ip:.2f}} kW"), print(f"bp = {{bp:.2f}} kW"), print(f"fp = {{fp:.2f}} kW")
+- gamma = 1.4 always (ratio of specific heats for air) — NEVER derive from r or other values
+- Cp = gamma * Cv = 1.4 * Cv  (NEVER derive Cp from r or from r/(r-1))
+- Otto efficiency: eta = 1 - (1 / (r ** 0.4))  NOT 1 - (1 / r**(0.4-1))
+- Diesel T2 = T1 * (r ** 0.4)
+- Diesel T3 = T2 * rc  (constant pressure — just multiply by cutoff ratio)
+- Diesel T4 = T3 * ((rc/r) ** 0.4)  NOT T3 * (1/r)**0.4
+- Diesel Qin = Cp * (T3 - T2)  use Cp NOT Cv
+- Diesel Qout = Cv * (T4 - T1)
 - Output ONLY executable Python code — no explanation, no markdown
 
 Problem: {question}"""
