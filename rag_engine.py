@@ -685,29 +685,28 @@ Problem: {question}"""
             return None
 
         # Step C: Ask Scout to present the results clearly
+
         format_prompt = f"""You are an IC Engine professor presenting a solved problem.
 
-Student question: {question}
+        Student question: {question}
 
-Python calculated these exact values:
-{output}
+        Python calculated these exact values:
+        {output}
 
-Present a clean step-by-step solution:
-- State each formula used
-- Show substitution with actual values
-- Show the result of each step
-- Give final answers with units
-- Add a short verification checklist
+        Present a clean step-by-step solution:
+        - State each formula used
+        - Show substitution with actual values
+        - Show the result of each step
+        - Give final answers with units
+        - Add a short verification checklist
 
-FORMATTING RULES:
-Rules: plain text only, no LaTeX, no markdown math.
-Use: T_2, η_th, i_p, b_p, f_p notation.
-CRITICAL: Power values must be in kW — if Python printed kW keep as kW, never convert to W or multiply by 1000.
-- NO ## headers, NO ### headers, NO ** bold **
-- NO markdown of any kind
-- Use plain numbered steps: 1. 2. 3.
-- Use: T_2, η_th, i_p, b_p, f_p notation
-- Use × for multiplication, / for division"""
+        FORMATTING RULES:
+        - Plain text only — no LaTeX, no markdown
+        - NO ## headers, NO ### headers, NO ** bold **
+        - Use plain numbered steps: 1. 2. 3.
+        - Use T_2, η_th, i_p, b_p, f_p notation
+        - Use × for multiplication, / for division
+        - Power values in kW — if Python printed kW keep as kW, NEVER convert to W or multiply by 1000"""
 
         try:
             formatted = scout.invoke(format_prompt).content
