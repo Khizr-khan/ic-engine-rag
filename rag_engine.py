@@ -123,6 +123,8 @@ CRITICAL EXPONENT VALUES — use these exact values:
   16^0.4  = 3.031
   18^0.4  = 3.178
   20^0.4  = 3.314
+  6^0.4 = 2.048
+  7^0.4 = 2.178
 
   Diesel cutoff (rc^γ where γ=1.4):
   2^1.4   = 2.639
