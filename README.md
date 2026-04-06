@@ -31,7 +31,7 @@ An AI-powered study assistant for IC Engine engineering students, built with Ret
 - **9 response types** — short answers, explanations, comparisons, diagrams, calculations
 - **Auto quiz generation** from course material with answer checking
 - **Streaming responses** with real-time typing effect and thinking indicator
-- **Smart model routing** — compound-mini → Llama 4 Scout → 8B fallback for numericals
+- **3-tier numerical pipeline** — compound-mini (Python executor) → local Python subprocess → Scout fallback
 - **Auto model switching** when daily token limits are hit
 - **Token usage tracker** with color-coded progress bar
 - **3 model options** — 70B, 8B, Llama 4 Scout
@@ -50,8 +50,8 @@ FastAPI Backend (main.py)
       ↓
 RAG Engine (rag_engine.py)
       ↓                    ↓
-ChromaDB Vector DB      Groq / Google LLM API
-(HuggingFace Dataset)   (70B / Scout / 8B)
+ChromaDB Vector DB      Groq LLM API
+(HuggingFace Dataset)   (70B / Scout / 8B / compound-mini)
       ↑
 Ganesan PDF (ingested via ingest.py)
 ```
@@ -103,7 +103,6 @@ Create a `.env` file:
 GROQ_API_KEY=your_groq_api_key
 HF_TOKEN=your_huggingface_token
 ADMIN_KEY=your_admin_key
-GOOGLE_API_KEY=your_google_ai_studio_key
 ```
 
 ### 5. Add textbook PDF
@@ -141,6 +140,7 @@ streamlit run app.py
 | llama-3.3-70b-versatile | Groq | 100k/day | Primary — conceptual questions |
 | meta-llama/llama-4-scout-17b-16e-instruct | Groq | 100k/day | Numerical problems |
 | llama-3.1-8b-instant | Groq | 500k/day | Fallback when 70B exhausted |
+| groq/compound-mini | Groq | Shared pool | Numerical problems with Python executor |
 | groq/compound-mini | Groq | Shared pool | Numerical with code execution |
 
 Token limits reset at **midnight UTC (5am Pakistan time)**.

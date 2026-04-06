@@ -133,7 +133,7 @@ Smart routing — determines whether to retrieve from ChromaDB:
 **`ask_stream(question, top_k, history)`**
 Main streaming method:
 1. Enhance question
-2. If numerical → retrieve context → try compound-mini → fallback to Scout
+2. If numerical → retrieve 6 RAG chunks → try compound-mini (Python executor on Groq) → local Python subprocess executor → Scout fallback
 3. If conceptual → check needs_rag → retrieve if needed → send to 70b
 4. Auto-switches model on 429 / quota rate limit errors
 
@@ -192,10 +192,14 @@ is_numerical_question()?
       │
       ├── YES → Retrieve RAG context (6 chunks)
       │              ↓
-      │         Try compound-mini
-      │              ├── Success → stream answer
-      │              └── Any error → Llama 4 Scout (with full context)
-      │                                  └── 429 → 8B fallback
+      │         TIER 1: compound-mini (Python on Groq servers)
+      │              ├── Success → clean LaTeX → stream answer
+      │              └── Fails → TIER 2: Local Python executor
+      │                              ├── Scout writes Python code
+      │                              ├── HF Space runs subprocess
+      │                              ├── Success → Scout formats → stream answer
+      │                              └── Fails → TIER 3: Scout pattern matching
+      │                                              └── 429 → 8B fallback
       │
       └── NO  → needs_rag()?
                     ├── YES → retrieve from ChromaDB
@@ -214,6 +218,13 @@ MODELS = {
     "llama-3.1-8b-instant":                      {"limit": 500000, "label": "8B — Fast",          "provider": "groq"},
     "meta-llama/llama-4-scout-17b-16e-instruct": {"limit": 100000, "label": "Llama 4 Scout",      "provider": "groq"},
 }
+```
+
+### Numerical Pipeline — 3 Tiers
+```
+Tier 1: compound-mini    → Python executes on Groq servers  → exact
+Tier 2: Local executor   → Scout writes code, HF Space runs → exact  
+Tier 3: Scout fallback   → pattern matching                 → ~80% accurate
 ```
 
 ### Token Reset
@@ -420,7 +431,6 @@ python upload_db.py
 | `GROQ_API_KEY` | Yes | Groq API key for LLM calls |
 | `HF_TOKEN` | Yes | HuggingFace token for dataset download |
 | `ADMIN_KEY` | Yes | Secret key for `/ingest` endpoint |
-| `GOOGLE_API_KEY` | No | Google AI Studio key (disabled for now) |
 
 Set these in:
 - **Local:** `.env` file in project root
@@ -445,11 +455,11 @@ Port:     7860
 
 | Issue | Root Cause | Status |
 |-------|-----------|--------|
-| compound-mini always rate limited | Shares 70B token pool | Acceptable — falls to Scout |
-| Arithmetic errors on unfamiliar exponents (e.g. 14^0.4) | LLM limitation — not a calculator | Fundamental — needs calculator tool |
+| compound-mini intermittently returns empty | Non-deterministic code executor | Handled — falls to local Python executor |
+| Arithmetic errors on unfamiliar exponents (e.g. 6^0.4) | LLM limitation in Tier 3 Scout fallback only | Mitigated — Python executor handles Tiers 1 and 2 exactly |
 | 8B model leaks TYPE labels in response | Weak instruction following | Partially fixed via prompt |
 | Diesel T4 slight inconsistency across attempts | Rounding differences | Acceptable for study assistant |
-| Google/Gemma 4 model disabled | API key validation issues | Pending — re-enable when model name confirmed |
+| Google/Gemma 4 model disabled | Model name not confirmed | Disabled — re-enable when correct model string confirmed |
 
 ---
 
