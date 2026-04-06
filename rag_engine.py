@@ -699,8 +699,13 @@ Present a clean step-by-step solution:
 - Give final answers with units
 - Add a short verification checklist
 
-Rules: plain text only, no LaTeX, no markdown math.
-Use: T_2, η_th, i_p, b_p, f_p notation."""
+FORMATTING RULES:
+- Plain text only — no LaTeX, no markdown
+- NO ## headers, NO ### headers, NO ** bold **
+- NO markdown of any kind
+- Use plain numbered steps: 1. 2. 3.
+- Use: T_2, η_th, i_p, b_p, f_p notation
+- Use × for multiplication, / for division"""
 
         try:
             formatted = scout.invoke(format_prompt).content
