@@ -5,6 +5,7 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.prompts import PromptTemplate
 from dotenv import load_dotenv
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 load_dotenv()
 
@@ -609,8 +610,10 @@ STRICT RULES:
 - Keep imep/bmep in kPa — do NOT convert to Pa
 - For 4-stroke power: ip = imep * L * A * (N/2) * K / 60  (result in kW directly)
 - /60 appears ONCE at the very end — NEVER divide N by 60 separately first
+- fp = ip - bp  (fp is POWER in kW — NOT pressure, NEVER in kPa)
+- bp = mechanical_efficiency * ip  (if mechanical efficiency given)
 - Print each step with a label e.g. print(f"A = {{A:.6f}} m2")
-- Print final answers clearly e.g. print(f"ip = {{ip:.2f}} kW")
+- Print final answers: print(f"ip = {{ip:.2f}} kW"), print(f"bp = {{bp:.2f}} kW"), print(f"fp = {{fp:.2f}} kW")
 - Output ONLY executable Python code — no explanation, no markdown
 
 Problem: {question}"""
@@ -715,7 +718,7 @@ Use: T_2, η_th, i_p, b_p, f_p notation."""
                 from groq import Groq as GroqClient
                 client = GroqClient(api_key=os.getenv("GROQ_API_KEY"))
                 numerical_prompt = self._build_numerical_prompt(question, context=num_context)
-                numerical_prompt += "\n\nIMPORTANT: Use the code execution tool ONLY — do NOT use web search. Write and run Python code to compute the exact answer."
+                numerical_prompt += "\n\nIMPORTANT: Use the code execution tool ONLY — do NOT use web search. Write and run Python code to compute the exact answer. fp = ip - bp in kW (NOT pressure)."
                 response = client.chat.completions.create(
                     model="groq/compound-mini",
                     messages=[{"role": "user", "content": numerical_prompt}],
