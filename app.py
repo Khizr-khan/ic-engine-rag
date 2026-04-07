@@ -12,7 +12,8 @@ st.set_page_config(
 API_URL = "https://khizr72-ic-engine-rag-v2.hf.space"
 
 # Google Analytics
-st.markdown("""
+import streamlit.components.v1 as components
+components.html("""
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-6Z7LKVRGZ1"></script>
 <script>
@@ -21,7 +22,7 @@ st.markdown("""
   gtag('js', new Date());
   gtag('config', 'G-6Z7LKVRGZ1');
 </script>
-""", unsafe_allow_html=True)
+""", height=0)
 
 st.markdown("""
 <style>
