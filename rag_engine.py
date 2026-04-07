@@ -758,7 +758,16 @@ Problem: {question}"""
                 from groq import Groq as GroqClient
                 client = GroqClient(api_key=os.getenv("GROQ_API_KEY"))
                 numerical_prompt = self._build_numerical_prompt(question, context=num_context)
-                numerical_prompt += "\n\nIMPORTANT: Use the code execution tool ONLY — do NOT use web search. Write and run Python code to compute the exact answer. fp = ip - bp in kW (NOT pressure)."
+                
+                numerical_prompt += """
+
+                IMPORTANT: Use the code execution tool ONLY — do NOT use web search.
+                Write and run Python code. Follow these rules exactly:
+                - 4-stroke ip = imep * L * A * (N/2) * K / 60  ← /2 is MANDATORY for 4-stroke
+                - T3 = T2 * rc  ← constant pressure, just multiply by rc, NOT rc^(γ-1)
+                - T4 = T3 * ((rc/r) ** 0.4)
+                - eta = 1 - (1/r**0.4) * (rc**1.4 - 1) / (1.4 * (rc - 1))
+                - fp = ip - bp in kW NOT pressure"""
                 response = client.chat.completions.create(
                     model="groq/compound-mini",
                     messages=[{"role": "user", "content": numerical_prompt}],
