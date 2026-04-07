@@ -752,56 +752,10 @@ Problem: {question}"""
             num_docs = retriever.invoke(question)
             num_context = "\n\n".join(d.page_content for d in num_docs) if num_docs else ""
 
-            # Step 1: Try compound-mini (has built-in Python executor)
+            # Step 1: compound-mini disabled — uses uncontrolled formulas
+            # Tier 2 Python executor is more reliable with exact rules
             compound_success = False
-            try:
-                from groq import Groq as GroqClient
-                client = GroqClient(api_key=os.getenv("GROQ_API_KEY"))
-                numerical_prompt = self._build_numerical_prompt(question, context=num_context)
-                
-                numerical_prompt += """
-
-                IMPORTANT: Use the code execution tool ONLY — do NOT use web search.
-                Write and run Python code. Follow these rules exactly:
-                - 4-stroke ip = imep * L * A * (N/2) * K / 60  ← /2 is MANDATORY for 4-stroke
-                - T3 = T2 * rc  ← constant pressure, just multiply by rc, NOT rc^(γ-1)
-                - T4 = T3 * ((rc/r) ** 0.4)
-                - eta = 1 - (1/r**0.4) * (rc**1.4 - 1) / (1.4 * (rc - 1))
-                - fp = ip - bp in kW NOT pressure"""
-                response = client.chat.completions.create(
-                    model="groq/compound-mini",
-                    messages=[{"role": "user", "content": numerical_prompt}],
-                    max_tokens=2000
-                )
-                msg = response.choices[0].message
-                answer = msg.content or ""
-                if not answer:
-                    answer = getattr(msg, "reasoning", "") or ""
-                if not answer:
-                    raise Exception("Empty response from compound-mini")
-
-                # Clean LaTeX from compound-mini output
-                import re as _re
-                answer = _re.sub(r'\\\[|\\\]', '\n', answer)
-                answer = _re.sub(r'\\\(|\\\)', '', answer)
-                answer = _re.sub(r'\\boxed\{([^}]*)\}', r'\1', answer)
-                answer = _re.sub(r'\\frac\{([^}]*)\}\{([^}]*)\}', r'(\1/\2)', answer)
-                answer = _re.sub(r'\\text\{([^}]*)\}', r'\1', answer)
-                answer = _re.sub(r'\\begin\{[^}]*\}|\\end\{[^}]*\}', '', answer)
-                answer = _re.sub(r'\\mathbf\{([^}]*)\}', r'\1', answer)
-                answer = _re.sub(r'\\;|\\,|\\!|\\quad|\\qquad', ' ', answer)
-                answer = answer.replace('\\times','×').replace('\\eta','η').replace('\\pi','π')
-                answer = _re.sub(r'\\[a-zA-Z]+\s?', '', answer)
-                answer = _re.sub(r'\d+\.\d{7,}', lambda m: str(round(float(m.group()), 4)), answer)
-
-                words = answer.split(" ")
-                for i, word in enumerate(words):
-                    yield word + (" " if i < len(words) - 1 else "")
-                compound_success = True
-                print("[compound-mini] succeeded")
-
-            except Exception as e:
-                print(f"[compound-mini] failed: {e} — trying Python executor")
+            print("[compound-mini] disabled — going to Tier 2 directly")
 
             # Step 2: Python executor — guaranteed exact arithmetic
             if not compound_success:
