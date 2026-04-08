@@ -617,6 +617,9 @@ ENGINE PERFORMANCE:
 - A = math.pi * (bore_m / 2) ** 2  (m²)
 - Convert stroke to meters: L = stroke / 1000
 - ip = imep * L * A * (N/2) * K / 60  (kW directly)
+- NEVER use ip = (imep * VS * N) / (120 * n) — this is WRONG for 4-stroke
+- ALWAYS compute A separately: A = math.pi * (bore_m/2)**2
+- ALWAYS use L and A separately in the formula, not VS directly
 - K is number of cylinders — MULTIPLY by K never divide
 - /60 appears ONCE at the very end — NEVER divide N by 60 separately
 - bp = mechanical_efficiency * ip
