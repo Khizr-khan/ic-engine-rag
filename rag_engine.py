@@ -618,6 +618,10 @@ ENGINE PERFORMANCE:
 - A = math.pi * (bore_m / 2) ** 2  (m²) — compute separately, NEVER use VS in ip formula
 - ip = imep * L * A * (N/2) * K / 60  (kW directly)
 - NEVER use ip = imep * VS * N / 120 or any VS shortcut
+- CORRECT EXAMPLE for 4-cyl, bore=80mm, stroke=90mm, N=3000, imep=750:
+  bore_m=0.08, L=0.09, A=pi*(0.04)**2=0.005027
+  ip = 750 * 0.09 * 0.005027 * 1500 * 4 / 60 = 42.73 kW
+- K = number of cylinders (4, 6 etc) — always multiply by K
 - /60 appears ONCE at the very end — NEVER divide N by 60 separately
 - bp = mechanical_efficiency * ip
 - fp = ip - bp  (fp is POWER in kW — NOT pressure, NEVER in kPa)
