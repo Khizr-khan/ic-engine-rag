@@ -133,7 +133,7 @@ Smart routing — determines whether to retrieve from ChromaDB:
 **`ask_stream(question, top_k, history)`**
 Main streaming method:
 1. Enhance question
-2. If numerical → retrieve 6 RAG chunks → try compound-mini (Python executor on Groq) → local Python subprocess executor → Scout fallback
+2. If numerical → retrieve 6 RAG chunks → local Python subprocess executor (Scout writes code) → Scout pattern matching fallback
 3. If conceptual → check needs_rag → retrieve if needed → send to 70b
 4. Auto-switches model on 429 / quota rate limit errors
 
@@ -192,14 +192,15 @@ is_numerical_question()?
       │
       ├── YES → Retrieve RAG context (6 chunks)
       │              ↓
-      │         TIER 1: compound-mini (Python on Groq servers)
-      │              ├── Success → clean LaTeX → stream answer
-      │              └── Fails → TIER 2: Local Python executor
-      │                              ├── Scout writes Python code
-      │                              ├── HF Space runs subprocess
-      │                              ├── Success → Scout formats → stream answer
-      │                              └── Fails → TIER 3: Scout pattern matching
-      │                                              └── 429 → 8B fallback
+      │         TIER 1: Local Python executor
+      │              ├── Scout writes Python following STRICT RULES
+      │              ├── HF Space runs subprocess
+      │              ├── Scout formats result cleanly
+      │              ├── Success → stream answer ✅
+      │              └── Fails → TIER 2: Scout pattern matching
+      │                              ├── Reads NUMERICAL_SYSTEM_PROMPT
+      │                              ├── Uses exponent table
+      │                              └── ~80% accurate ⚠️
       │
       └── NO  → needs_rag()?
                     ├── YES → retrieve from ChromaDB
@@ -220,11 +221,12 @@ MODELS = {
 }
 ```
 
-### Numerical Pipeline — 3 Tiers
+### Numerical Pipeline — 2 Tiers
 ```
-Tier 1: compound-mini    → Python executes on Groq servers  → exact
-Tier 2: Local executor   → Scout writes code, HF Space runs → exact  
-Tier 3: Scout fallback   → pattern matching                 → ~80% accurate
+Tier 1: Local executor   → Scout writes code, HF Space runs python3 → exact
+Tier 2: Scout fallback   → pattern matching from NUMERICAL_SYSTEM_PROMPT → ~80% accurate
+
+Note: compound-mini disabled — used uncontrolled formulas causing wrong answers
 ```
 
 ### Token Reset
@@ -455,11 +457,11 @@ Port:     7860
 
 | Issue | Root Cause | Status |
 |-------|-----------|--------|
-| compound-mini intermittently returns empty | Non-deterministic code executor | Handled — falls to local Python executor |
+| compound-mini disabled | Used uncontrolled formulas causing wrong answers | Disabled permanently — Tier 1 is now local Python executor |
 | Arithmetic errors on unfamiliar exponents (e.g. 6^0.4) | LLM limitation in Tier 3 Scout fallback only | Mitigated — Python executor handles Tiers 1 and 2 exactly |
 | 8B model leaks TYPE labels in response | Weak instruction following | Partially fixed via prompt |
 | Diesel T4 slight inconsistency across attempts | Rounding differences | Acceptable for study assistant |
-| Google/Gemma 4 model disabled | Model name not confirmed | Disabled — re-enable when correct model string confirmed |
+
 
 ---
 

@@ -31,7 +31,7 @@ An AI-powered study assistant for IC Engine engineering students, built with Ret
 - **9 response types** — short answers, explanations, comparisons, diagrams, calculations
 - **Auto quiz generation** from course material with answer checking
 - **Streaming responses** with real-time typing effect and thinking indicator
-- **3-tier numerical pipeline** — compound-mini (Python executor) → local Python subprocess → Scout fallback
+- **2-tier numerical pipeline** — local Python subprocess (Scout writes code, HF Space executes) → Scout pattern matching fallback
 - **Auto model switching** when daily token limits are hit
 - **Token usage tracker** with color-coded progress bar
 - **3 model options** — 70B, 8B, Llama 4 Scout
@@ -51,7 +51,7 @@ FastAPI Backend (main.py)
 RAG Engine (rag_engine.py)
       ↓                    ↓
 ChromaDB Vector DB      Groq LLM API
-(HuggingFace Dataset)   (70B / Scout / 8B / compound-mini)
+(HuggingFace Dataset)   (70B / Scout / 8B)
       ↑
 Ganesan PDF (ingested via ingest.py)
 ```
@@ -140,8 +140,7 @@ streamlit run app.py
 | llama-3.3-70b-versatile | Groq | 100k/day | Primary — conceptual questions |
 | meta-llama/llama-4-scout-17b-16e-instruct | Groq | 100k/day | Numerical problems |
 | llama-3.1-8b-instant | Groq | 500k/day | Fallback when 70B exhausted |
-| groq/compound-mini | Groq | Shared pool | Numerical problems with Python executor |
-| groq/compound-mini | Groq | Shared pool | Numerical with code execution |
+
 
 Token limits reset at **midnight UTC (5am Pakistan time)**.
 
