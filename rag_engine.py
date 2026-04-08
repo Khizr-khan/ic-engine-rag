@@ -613,14 +613,11 @@ STRICT RULES:
 
 ENGINE PERFORMANCE:
 - Keep imep/bmep in kPa — do NOT convert to Pa
-- Convert bore to meters first: bore_m = bore / 1000
-- A = math.pi * (bore_m / 2) ** 2  (m²)
-- Convert stroke to meters: L = stroke / 1000
+- bore_m = bore / 1000  (convert mm to m)
+- L = stroke / 1000     (convert mm to m)
+- A = math.pi * (bore_m / 2) ** 2  (m²) — compute separately, NEVER use VS in ip formula
 - ip = imep * L * A * (N/2) * K / 60  (kW directly)
-- NEVER use ip = (imep * VS * N) / (120 * n) — this is WRONG for 4-stroke
-- ALWAYS compute A separately: A = math.pi * (bore_m/2)**2
-- ALWAYS use L and A separately in the formula, not VS directly
-- K is number of cylinders — MULTIPLY by K never divide
+- NEVER use ip = imep * VS * N / 120 or any VS shortcut
 - /60 appears ONCE at the very end — NEVER divide N by 60 separately
 - bp = mechanical_efficiency * ip
 - fp = ip - bp  (fp is POWER in kW — NOT pressure, NEVER in kPa)
