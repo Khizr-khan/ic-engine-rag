@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
 from models import AskRequest, AskResponse, SourceDoc, IngestResponse
-from rag_engine import rag
+from rag_engine import rag, MODELS
 from ingest import ingest_documents
 
 load_dotenv()
@@ -81,12 +81,7 @@ def get_token_stats():
 @app.post("/switch-model")
 def switch_model(body: dict):
     model = body.get("model", "")
-    allowed = [
-        "llama-3.3-70b-versatile",
-        "llama-3.1-8b-instant",
-        "meta-llama/llama-4-scout-17b-16e-instruct"
-    ]
-    if model not in allowed:
+    if model not in MODELS:
         raise HTTPException(status_code=400, detail="Invalid model name")
     rag.switch_model(model)
     return {"message": f"Switched to {model}", "model": model}

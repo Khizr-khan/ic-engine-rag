@@ -302,22 +302,20 @@ with col_header:
 
 with col_model:
     st.markdown("<div style='padding-top:14px'>", unsafe_allow_html=True)
-    current_model = stats["model"] if stats else "llama-3.3-70b-versatile"
+    current_model = stats["model"] if stats else "openai/gpt-oss-120b"
     MODEL_OPTIONS = [
-        "llama-3.3-70b-versatile",
-        "llama-3.1-8b-instant",
-        "meta-llama/llama-4-scout-17b-16e-instruct",
+        "openai/gpt-oss-120b",
+        "openai/gpt-oss-20b",
     ]
     MODEL_LABELS = {
-        "llama-3.3-70b-versatile":                   "70B — High Quality",
-        "llama-3.1-8b-instant":                      "8B — Fast",
-        "meta-llama/llama-4-scout-17b-16e-instruct": "Llama 4 Scout",
+        "openai/gpt-oss-120b": "GPT-OSS 120B — High Quality",
+        "openai/gpt-oss-20b":  "GPT-OSS 20B — Fast",
     }
     current_index = MODEL_OPTIONS.index(current_model) if current_model in MODEL_OPTIONS else 0
     selected = st.selectbox(
     "Model",
     options=MODEL_OPTIONS,
-    format_func=lambda x: MODEL_LABELS[x],
+    format_func=lambda x: MODEL_LABELS.get(x, x),
         index=current_index,
         label_visibility="collapsed"
     )
