@@ -13,16 +13,16 @@ CHROMA_DIR = "./chroma_ic_db"
 HF_REPO_ID = "Khizr72/ic-engine-chromadb"
 
 # Token tracking
+# Token tracking
 token_stats = {
     "used": 0,
     "limit": 100000,
-    "model": "llama-3.3-70b-versatile"
+    "model": "openai/gpt-oss-120b"
 }
 
 MODELS = {
-    "llama-3.3-70b-versatile":                   {"limit": 100000, "label": "70B (High Quality)"},
-    "llama-3.1-8b-instant":                      {"limit": 500000, "label": "8B (Fast)"},
-    "meta-llama/llama-4-scout-17b-16e-instruct": {"limit": 100000, "label": "Llama 4 Scout"},
+    "openai/gpt-oss-120b": {"limit": 100000, "label": "GPT-OSS 120B (High Quality)"},
+    "openai/gpt-oss-20b":  {"limit": 500000, "label": "GPT-OSS 20B (Fast)"},
 }
 
 def download_database():
