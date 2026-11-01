@@ -12,17 +12,21 @@ load_dotenv()
 CHROMA_DIR = "./chroma_ic_db"
 HF_REPO_ID = "Khizr72/ic-engine-chromadb"
 
-# Token tracking
+# Model names can be overridden with environment variables, so a future
+# Groq model retirement only needs a settings change, not a code change.
+PRIMARY_MODEL = os.getenv("GROQ_PRIMARY_MODEL", "openai/gpt-oss-120b")
+FAST_MODEL    = os.getenv("GROQ_FAST_MODEL", "openai/gpt-oss-20b")
+
 # Token tracking
 token_stats = {
     "used": 0,
     "limit": 100000,
-    "model": "openai/gpt-oss-120b"
+    "model": PRIMARY_MODEL
 }
 
 MODELS = {
-    "openai/gpt-oss-120b": {"limit": 100000, "label": "GPT-OSS 120B (High Quality)"},
-    "openai/gpt-oss-20b":  {"limit": 500000, "label": "GPT-OSS 20B (Fast)"},
+    PRIMARY_MODEL: {"limit": 100000, "label": "GPT-OSS 120B (High Quality)"},
+    FAST_MODEL:    {"limit": 500000, "label": "GPT-OSS 20B (Fast)"},
 }
 
 def download_database():
@@ -298,7 +302,7 @@ class RAGEngine:
             persist_directory=CHROMA_DIR,
             embedding_function=self.embeddings
         )
-        self.current_model = "llama-3.3-70b-versatile"
+        self.current_model = PRIMARY_MODEL
         self.llm = ChatGroq(
             model=self.current_model,
             temperature=0
@@ -455,11 +459,6 @@ class RAGEngine:
         context = "\n\n".join(d.page_content for d in docs)
 
         # Use higher temperature for more creative and varied quiz questions
-        # quiz_llm = ChatGroq(
-        #     model="llama-3.3-70b-versatile",
-        #     temperature=0.4
-        # )
-
         quiz_llm = ChatGroq(
         model=self.current_model,
         temperature=0.4
@@ -572,16 +571,16 @@ class RAGEngine:
         return f"{NUMERICAL_SYSTEM_PROMPT}{context_block}\nProblem: {question}"
 
     def _stream_scout_numerical(self, question: str, context: str = ""):
-        """Use Llama 4 Scout with full numerical prompt — yields chunks."""
-        scout = ChatGroq(model="meta-llama/llama-4-scout-17b-16e-instruct", temperature=0)
+        """Use the primary model with full numerical prompt — yields chunks."""
+        scout = ChatGroq(model=PRIMARY_MODEL, temperature=0)
         full_prompt = self._build_numerical_prompt(question, context=context)
-        print(f"[ROUTING] → Tier 3 Scout fallback for numerical")
+        print(f"[ROUTING] → Tier 2 fallback for numerical ({PRIMARY_MODEL})")
         try:
             for chunk in scout.stream(full_prompt):
                 yield chunk.content
         except Exception as e:
             if "429" in str(e) or "rate_limit" in str(e).lower():
-                fallback = ChatGroq(model="llama-3.1-8b-instant", temperature=0)
+                fallback = ChatGroq(model=FAST_MODEL, temperature=0)
                 try:
                     for chunk in fallback.stream(full_prompt):
                         yield chunk.content
@@ -654,8 +653,8 @@ PRINTING:
 
 Problem: {question}"""
 
-        scout = ChatGroq(model="meta-llama/llama-4-scout-17b-16e-instruct", temperature=0)
-        print(f"[ROUTING] → Tier 2 Python executor: Scout writing code")
+        scout = ChatGroq(model=PRIMARY_MODEL, temperature=0)
+        print(f"[ROUTING] → Tier 1 Python executor: {PRIMARY_MODEL} writing code")
         try:
             code_response = scout.invoke(code_prompt).content
         except Exception as e:
@@ -773,7 +772,7 @@ Problem: {question}"""
 
             # Step 3: Last resort — Scout with full numerical prompt
             if not compound_success:
-                print("[Scout fallback] using Scout with numerical prompt")
+                print("[fallback] using numerical prompt without code execution")
                 yield from self._stream_scout_numerical(question, context=num_context)
 
             return
@@ -828,23 +827,9 @@ Problem: {question}"""
 
         except Exception as e:
             if is_rate_limit(e):
-                if self.current_model == "llama-3.3-70b-versatile":
-                    print("[ROUTING] Rate limit hit — switching to Llama 4 Scout automatically")
-                    self.switch_model("meta-llama/llama-4-scout-17b-16e-instruct")
-                    try:
-                        yield from stream_llm(self.llm, prompt_value)
-                    except Exception as e2:
-                        if is_rate_limit(e2):
-                            self.switch_model("llama-3.1-8b-instant")
-                            try:
-                                yield from stream_llm(self.llm, prompt_value)
-                            except Exception:
-                                yield "All models are currently unavailable. Please try again later."
-                        else:
-                            yield "An error occurred. Please try again."
-                elif self.current_model == "meta-llama/llama-4-scout-17b-16e-instruct":
-                    print("Rate limit hit — switching to 8B model automatically")
-                    self.switch_model("llama-3.1-8b-instant")
+                if self.current_model == PRIMARY_MODEL:
+                    print(f"[ROUTING] Rate limit hit — switching to {FAST_MODEL} automatically")
+                    self.switch_model(FAST_MODEL)
                     try:
                         yield from stream_llm(self.llm, prompt_value)
                     except Exception:
