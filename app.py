@@ -361,6 +361,9 @@ def build_history():
     return history
 
 def format_subscripts(text: str) -> str:
+    # Replace special hyphens and dashes from GPT-OSS with normal hyphens
+    text = (text.replace('\u2011', '-').replace('\u2010', '-')
+                .replace('\u2012', '-').replace('\u2013', '-'))
     # Remove markdown bold and italic
     text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
     text = re.sub(r'\*(.*?)\*', r'\1', text)
