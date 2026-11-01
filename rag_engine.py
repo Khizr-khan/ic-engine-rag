@@ -207,6 +207,8 @@ NUMBERS IN CONCEPTUAL ANSWERS:
   Diesel efficiency formula (note the γ in the denominator):
     η_th = 1 - (1 / r^(γ-1)) × (rc^γ - 1) / (γ × (rc - 1))
   Diesel emissions: soot comes from locally rich zones; SO2 comes from sulphur in the fuel
+  Equivalence ratio: φ = (actual fuel-air ratio) / (stoichiometric fuel-air ratio)
+    φ > 1 is rich, φ < 1 is lean — it uses FUEL-air ratio, not air-fuel ratio
   If you mention any of these quantities, use these REFERENCE VALUES exactly:
     Ideal Otto efficiency:   r = 8 → 56.5%,  r = 9 → 58.5%,  r = 10 → 60.2%
     Ideal Diesel efficiency: r = 16, rc = 2.5 → 59.1%;  r = 18, rc = 2.2 → 62.2%
@@ -408,7 +410,12 @@ class RAGEngine:
         question_words = [
             "what", "how", "why", "when", "where",
             "which", "explain", "describe", "define",
-            "draw", "show", "sketch", "diagram"
+            "draw", "show", "sketch", "diagram",
+            # Comparison requests are complete questions too — without these,
+            # "Difference between SI and CI engines" was rewritten to
+            # "Explain ... in detail" and answered as a long TYPE 5 response
+            "difference", "differentiate", "distinguish",
+            "compare", "comparison", "contrast"
         ]
         is_proper_question = any(
             question.lower().startswith(w) for w in question_words
