@@ -31,10 +31,10 @@ An AI-powered study assistant for IC Engine engineering students, built with Ret
 - **9 response types** — short answers, explanations, comparisons, diagrams, calculations
 - **Auto quiz generation** from course material with answer checking
 - **Streaming responses** with real-time typing effect and thinking indicator
-- **2-tier numerical pipeline** — local Python subprocess (Scout writes code, HF Space executes) → Scout pattern matching fallback
+- **2-tier numerical pipeline** — local Python subprocess (GPT-OSS 120B writes code, HF Space executes) → prompt-based fallback
 - **Auto model switching** when daily token limits are hit
 - **Token usage tracker** with color-coded progress bar
-- **3 model options** — 70B, 8B, Llama 4 Scout
+- **2 model options** — GPT-OSS 120B and GPT-OSS 20B
 - **Smart RAG routing** — skips retrieval for performance questions, uses it for cycle theory
 
 ---
@@ -51,7 +51,7 @@ FastAPI Backend (main.py)
 RAG Engine (rag_engine.py)
       ↓                    ↓
 ChromaDB Vector DB      Groq LLM API
-(HuggingFace Dataset)   (70B / Scout / 8B)
+(HuggingFace Dataset)   (GPT-OSS 120B / 20B)
       ↑
 Ganesan PDF (ingested via ingest.py)
 ```
@@ -137,9 +137,10 @@ streamlit run app.py
 
 | Model | Provider | Token Limit | Use Case |
 |-------|----------|------------|----------|
-| llama-3.3-70b-versatile | Groq | 100k/day | Primary — conceptual questions |
-| meta-llama/llama-4-scout-17b-16e-instruct | Groq | 100k/day | Numerical problems |
-| llama-3.1-8b-instant | Groq | 500k/day | Fallback when 70B exhausted |
+| openai/gpt-oss-120b | Groq | 100k/day | Primary — conceptual and numerical questions |
+| openai/gpt-oss-20b | Groq | 500k/day | Fallback when 120B is rate-limited |
+
+Migrated from Llama 3.3 70B, Llama 4 Scout and Llama 3.1 8B after Groq retired them in 2026. Model names can be overridden with the `GROQ_PRIMARY_MODEL` and `GROQ_FAST_MODEL` environment variables.
 
 
 Token limits reset at **midnight UTC (5am Pakistan time)**.

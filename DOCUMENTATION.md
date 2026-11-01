@@ -38,7 +38,7 @@ FastAPI Backend (main.py)     ← HuggingFace Spaces (Docker)
 RAG Engine (rag_engine.py)
       ↓                    ↓
 ChromaDB Vector DB      Groq LLM API
-(HuggingFace Dataset)   (llama-3.3-70b / llama-4-scout / llama-3.1-8b)
+(HuggingFace Dataset)   (gpt-oss-120b / gpt-oss-20b)
       ↑
 Ganesan PDF (ingested via ingest.py)
 ```
@@ -59,7 +59,7 @@ Ganesan PDF (ingested via ingest.py)
 - Dark theme UI with IBM Plex fonts
 - Streaming chat interface with thinking indicator (pulsing dots)
 - Token usage progress bar (color-coded: green → yellow → red)
-- Model switcher dropdown (3 models)
+- Model switcher dropdown (2 models)
 - Quiz mode with answer checking
 - Dynamic auto-grow textarea input
 - `format_subscripts()` — strips LaTeX, converts to HTML subscripts
@@ -105,7 +105,7 @@ IngestResponse: message, chunks_added, files_processed
 rag = RAGEngine()
 # Downloads ChromaDB from HuggingFace on first run
 # Loads all-MiniLM-L6-v2 embeddings
-# Sets default model to llama-3.3-70b-versatile
+# Sets default model to openai/gpt-oss-120b
 ```
 
 ### Key Methods
@@ -133,8 +133,8 @@ Smart routing — determines whether to retrieve from ChromaDB:
 **`ask_stream(question, top_k, history)`**
 Main streaming method:
 1. Enhance question
-2. If numerical → retrieve 6 RAG chunks → local Python subprocess executor (Scout writes code) → Scout pattern matching fallback
-3. If conceptual → check needs_rag → retrieve if needed → send to 70b
+2. If numerical → retrieve 6 RAG chunks → local Python subprocess executor (120B writes code) → prompt-based fallback
+3. If conceptual → check needs_rag → retrieve if needed → send to the primary model (120B)
 4. Auto-switches model on 429 / quota rate limit errors
 
 **`generate_quiz(topic, num_questions)`**
@@ -193,11 +193,11 @@ is_numerical_question()?
       ├── YES → Retrieve RAG context (6 chunks)
       │              ↓
       │         TIER 1: Local Python executor
-      │              ├── Scout writes Python following STRICT RULES
+      │              ├── 120B writes Python following STRICT RULES
       │              ├── HF Space runs subprocess
-      │              ├── Scout formats result cleanly
+      │              ├── 120B formats result cleanly
       │              ├── Success → stream answer ✅
-      │              └── Fails → TIER 2: Scout pattern matching
+      │              └── Fails → TIER 2: prompt-based fallback
       │                              ├── Reads NUMERICAL_SYSTEM_PROMPT
       │                              ├── Uses exponent table
       │                              └── ~80% accurate ⚠️
@@ -206,33 +206,33 @@ is_numerical_question()?
                     ├── YES → retrieve from ChromaDB
                     └── NO  → use prompt formulas only
                          ↓
-                    send to llama-3.3-70b
-                         ├── 429/quota → switch to Scout
-                         │                   └── 429 → switch to 8B
+                    send to gpt-oss-120b
+                         ├── 429/quota → switch to gpt-oss-20b
                          └── success → stream response
 ```
 
 ### Model Configuration
 ```python
+PRIMARY_MODEL = os.getenv("GROQ_PRIMARY_MODEL", "openai/gpt-oss-120b")
+FAST_MODEL    = os.getenv("GROQ_FAST_MODEL", "openai/gpt-oss-20b")
+
 MODELS = {
-    "llama-3.3-70b-versatile":                   {"limit": 100000, "label": "70B — High Quality", "provider": "groq"},
-    "llama-3.1-8b-instant":                      {"limit": 500000, "label": "8B — Fast",          "provider": "groq"},
-    "meta-llama/llama-4-scout-17b-16e-instruct": {"limit": 100000, "label": "Llama 4 Scout",      "provider": "groq"},
+    PRIMARY_MODEL: {"limit": 100000, "label": "GPT-OSS 120B (High Quality)"},
+    FAST_MODEL:    {"limit": 500000, "label": "GPT-OSS 20B (Fast)"},
 }
 ```
 
 ### Numerical Pipeline — 2 Tiers
 ```
-Tier 1: Local executor   → Scout writes code, HF Space runs python3 → exact
-Tier 2: Scout fallback   → pattern matching from NUMERICAL_SYSTEM_PROMPT → ~80% accurate
+Tier 1: Local executor   → 120B writes code, HF Space runs python3 → exact
+Tier 2: Prompt fallback  → 120B (then 20B) with NUMERICAL_SYSTEM_PROMPT, no code execution
 
 Note: compound-mini disabled — used uncontrolled formulas causing wrong answers
 ```
 
 ### Token Reset
-- 70B and Scout: 100,000 tokens/day → resets midnight UTC (5am PKT)
-- 8B: 500,000 tokens/day
-- compound-mini: shares 70B pool
+- Limits in MODELS are carried over from the old setup — confirm actual daily limits in the Groq console
+- Migrated from Llama 3.3 70B / Llama 4 Scout / Llama 3.1 8B after Groq retired them in 2026
 
 ### Rate Limit Detection
 All of these are caught and trigger model switching:
@@ -307,8 +307,8 @@ Response:
 
 ### POST `/switch-model`
 ```json
-Request:  {"model": "llama-3.1-8b-instant"}
-Response: {"message": "Switched to llama-3.1-8b-instant", "model": "..."}
+Request:  {"model": "openai/gpt-oss-20b"}
+Response: {"message": "Switched to openai/gpt-oss-20b", "model": "..."}
 ```
 
 ### GET `/token-stats`
@@ -317,8 +317,8 @@ Response: {"message": "Switched to llama-3.1-8b-instant", "model": "..."}
   "used": 45231,
   "limit": 100000,
   "remaining": 54769,
-  "model": "llama-3.3-70b-versatile",
-  "label": "70B — High Quality",
+  "model": "openai/gpt-oss-120b",
+  "label": "GPT-OSS 120B (High Quality)",
   "percent_used": 45.2
 }
 ```
@@ -349,7 +349,7 @@ Shown immediately when request is sent, before first chunk arrives:
 - Fetches from `/token-stats` on each page load
 
 **Model Switcher**
-- Dropdown with 3 models
+- Dropdown with 2 models
 - Calls `/switch-model` on change
 - Shows current model in header
 
@@ -433,6 +433,8 @@ python upload_db.py
 | `GROQ_API_KEY` | Yes | Groq API key for LLM calls |
 | `HF_TOKEN` | Yes | HuggingFace token for dataset download |
 | `ADMIN_KEY` | Yes | Secret key for `/ingest` endpoint |
+| `GROQ_PRIMARY_MODEL` | No | Overrides the primary model (default `openai/gpt-oss-120b`) |
+| `GROQ_FAST_MODEL` | No | Overrides the fallback model (default `openai/gpt-oss-20b`) |
 
 Set these in:
 - **Local:** `.env` file in project root
@@ -458,8 +460,8 @@ Port:     7860
 | Issue | Root Cause | Status |
 |-------|-----------|--------|
 | compound-mini disabled | Used uncontrolled formulas causing wrong answers | Disabled permanently — Tier 1 is now local Python executor |
-| Arithmetic errors on unfamiliar exponents (e.g. 6^0.4) | LLM limitation in Tier 3 Scout fallback only | Mitigated — Python executor handles Tiers 1 and 2 exactly |
-| 8B model leaks TYPE labels in response | Weak instruction following | Partially fixed via prompt |
+| Arithmetic errors on unfamiliar exponents (e.g. 6^0.4) | LLM limitation in the Tier 2 prompt fallback only | Mitigated — Tier 1 Python executor computes exactly |
+| Llama models retired by Groq (2026) | Provider deprecation | Migrated to GPT-OSS 120B / 20B; re-verify reference answers after changes |
 | Diesel T4 slight inconsistency across attempts | Rounding differences | Acceptable for study assistant |
 
 
