@@ -360,10 +360,42 @@ def build_history():
         history.append({"role": role, "content": msg["text"]})
     return history
 
+def markdown_tables_to_html(text: str) -> str:
+    """Safety net: turn any markdown table the model writes into an HTML table,
+    because markdown tables do not render inside the chat bubble."""
+    lines = text.split('\n')
+    out, i = [], 0
+    is_row = lambda l: l.strip().startswith('|') and l.strip().count('|') >= 2
+    is_sep = lambda l: is_row(l) and re.fullmatch(r'[\s|:\-]+', l.strip()) is not None
+    cells = lambda l: [c.strip() for c in l.strip().strip('|').split('|')]
+    while i < len(lines):
+        if i + 1 < len(lines) and is_row(lines[i]) and is_sep(lines[i + 1]):
+            header = cells(lines[i])
+            i += 2
+            body = []
+            while i < len(lines) and is_row(lines[i]):
+                body.append(cells(lines[i]))
+                i += 1
+            th = "border-bottom:1px solid rgba(74,222,128,0.3);padding:6px 8px;text-align:left;color:#4ade80;font-weight:600"
+            td = "border-bottom:1px solid rgba(74,222,128,0.1);padding:6px 8px;vertical-align:top"
+            html = '<table style="border-collapse:collapse;width:100%;font-size:13px;margin:8px 0">'
+            html += '<tr>' + ''.join(f'<th style="{th}">{c}</th>' for c in header) + '</tr>'
+            for row in body:
+                row = (row + [''] * len(header))[:len(header)]
+                html += '<tr>' + ''.join(f'<td style="{td}">{c}</td>' for c in row) + '</tr>'
+            html += '</table>'
+            out.append(html)
+        else:
+            out.append(lines[i])
+            i += 1
+    return '\n'.join(out)
+
 def format_subscripts(text: str) -> str:
     # Replace special hyphens and dashes from GPT-OSS with normal hyphens
     text = (text.replace('\u2011', '-').replace('\u2010', '-')
                 .replace('\u2012', '-').replace('\u2013', '-'))
+    # Convert any markdown tables to HTML tables
+    text = markdown_tables_to_html(text)
     # Remove markdown bold and italic
     text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
     text = re.sub(r'\*(.*?)\*', r'\1', text)
